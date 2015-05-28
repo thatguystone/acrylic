@@ -1,27 +1,24 @@
 package toner
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 type layouts struct {
-	t *Toner
-	d data
+	s *site
 }
 
-func newLayouts(t *Toner, d data) (*layouts, error) {
-	l := &layouts{
-		t: t,
-		d: d,
+func (l *layouts) check() error {
+	if l.s.cfg.Theme == "" {
+		return nil
 	}
 
-	if l.t.cfg.Theme == "" {
-		return l, nil
+	base := filepath.Join(l.s.cfg.ThemesDir, l.s.cfg.Theme, "base.html")
+	if !l.s.fexists(base) {
+		return fmt.Errorf("theme `%s` does not exist",
+			l.s.cfg.Theme)
 	}
 
-	base := fmt.Sprintf("/themes/%s/base.html", l.t.cfg.Theme)
-	if !l.t.fexists(base) {
-		return nil, fmt.Errorf("theme `%s` does not exist",
-			l.t.cfg.Theme)
-	}
-
-	return l, nil
+	return nil
 }

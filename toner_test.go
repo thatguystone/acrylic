@@ -1,7 +1,7 @@
 package toner
 
 import (
-	"os"
+	"io/ioutil"
 	"testing"
 
 	"github.com/rainycape/vfs"
@@ -19,8 +19,6 @@ type testFile struct {
 	sc  string
 	bc  []byte
 }
-
-const createFlags = os.O_RDWR | os.O_CREATE | os.O_TRUNC
 
 func testNew(t *testing.T, build bool, files []testFile) *testToner {
 	t.Parallel()
@@ -50,7 +48,7 @@ func (tt *testToner) createFiles(files []testFile) {
 			err := vfs.MkdirAll(tt.fs, file.p, 0700)
 			tt.a.MustNotError(err, "failed to create dir %s", file.p)
 		} else {
-			f, err := tt.fs.OpenFile(file.p, createFlags, 0600)
+			f, err := fcreate(tt.fs, file.p, createFlags, 0600)
 			tt.a.MustNotError(err, "failed to create file %s", file.p)
 
 			if len(file.sc) > 0 {
@@ -64,19 +62,37 @@ func (tt *testToner) createFiles(files []testFile) {
 	}
 }
 
+func (tt *testToner) checkFile(path, contents string) {
+	f, err := tt.fs.Open(path)
+	tt.a.MustNotError(err, "failed to open %s", path)
+	defer f.Close()
+
+	fc, err := ioutil.ReadAll(f)
+	tt.a.MustNotError(err, "failed to read %s", path)
+
+	tt.a.Equal(contents, string(fc), "content mismatch for %s", path)
+}
+
+func (tt *testToner) checkBinFile(path string, contents []byte) {
+
+}
+
 func TestEmptySite(t *testing.T) {
 	testNew(t, true, nil)
 }
 
 func TestBasicSite(t *testing.T) {
-	testNew(t, true, []testFile{
+	tt := testNew(t, true, []testFile{
+		testFile{
+			p:  "/content/blog/post1.md",
+			sc: "---\ntitle: test\n---\n# hey there\n{{ \"test\" }}",
+		},
 		testFile{
 			dir: true,
 			p:   "/content/blog/empty",
 		},
-		testFile{
-			p:  "/content/blog/post1.md",
-			sc: "# hey there",
-		},
 	})
+
+	tt.checkFile("/public/blog/post1.html",
+		"<h1>hey there</h1>")
 }
