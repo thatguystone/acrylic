@@ -4,28 +4,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 
 	"github.com/rainycape/vfs"
+	"github.com/tdewolff/minify"
+	minhtml "github.com/tdewolff/minify/html"
 )
 
 // Single-use, for generating a site
 type site struct {
 	cfg *Config
 	fs  vfs.VFS
+	min *minify.Minify
 	d   data
 	c   []content
 	l   layouts
-	k   kinds
 	t   tags
-}
-
-type kinds struct {
-}
-
-type kind struct {
+	a   assets
 }
 
 type tags struct {
@@ -48,9 +44,13 @@ func newSite(cfg *Config, fs vfs.VFS) *site {
 	s := &site{
 		cfg: cfg,
 		fs:  fs,
+		min: minify.New(),
 	}
 
+	s.min.AddFunc("text/html", minhtml.Minify)
+
 	s.l.s = s
+	s.a.s = s
 
 	return s
 }
@@ -61,7 +61,7 @@ func (s *site) build() error {
 		return err
 	}
 
-	err = s.l.check()
+	err = s.l.init()
 	if err != nil {
 		return err
 	}
@@ -76,10 +76,9 @@ func (s *site) build() error {
 
 func (s *site) loadContent() error {
 	wg := sync.WaitGroup{}
-	procs := runtime.GOMAXPROCS(-1)
 
-	fileCh := make(chan file, procs*2)
-	contentCh := make(chan content, procs*2)
+	fileCh := make(chan file, s.cfg.Jobs*2)
+	contentCh := make(chan content, s.cfg.Jobs*2)
 	errCh := make(chan error)
 
 	reader := func() {
@@ -96,30 +95,30 @@ func (s *site) loadContent() error {
 	}
 
 	collector := func() {
-		errors := []string{}
+		errs := []string{}
 
 		for c := range contentCh {
 			if c.err != nil {
-				errors = append(errors, fmt.Sprintf("in %s: %s",
+				errs = append(errs, fmt.Sprintf("in %s: %s",
 					c.f.srcPath,
 					c.err.Error()))
 				s.c = nil
 			}
 
-			if len(errors) == 0 {
+			if len(errs) == 0 {
 				s.c = append(s.c, c)
 			}
 		}
 
-		if len(errors) == 0 {
+		if len(errs) == 0 {
 			errCh <- nil
 		} else {
 			errCh <- fmt.Errorf("errors while reading content: \n\t%s",
-				strings.Join(errors, "\n\t"))
+				strings.Join(errs, "\n\t"))
 		}
 	}
 
-	for i := 0; i < procs; i++ {
+	for i := uint(0); i < s.cfg.Jobs; i++ {
 		wg.Add(1)
 		go reader()
 	}
@@ -147,28 +146,27 @@ func (s *site) loadContent() error {
 
 func (s *site) generate() error {
 	wg := sync.WaitGroup{}
-	procs := runtime.GOMAXPROCS(-1)
 
-	contentCh := make(chan content, procs*2)
-	errCh := make(chan []string, procs*2)
+	contentCh := make(chan content, s.cfg.Jobs*2)
+	errCh := make(chan []string, s.cfg.Jobs)
 
 	generator := func() {
 		defer wg.Done()
 
-		errors := []string{}
+		errs := []string{}
 		for c := range contentCh {
 			err := c.render()
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("in %s: %s",
+				errs = append(errs, fmt.Sprintf("in %s: %s",
 					c.f.srcPath,
 					err.Error()))
 			}
 		}
 
-		errCh <- errors
+		errCh <- errs
 	}
 
-	for i := 0; i < procs; i++ {
+	for i := uint(0); i < s.cfg.Jobs; i++ {
 		wg.Add(1)
 		go generator()
 	}
@@ -181,21 +179,21 @@ func (s *site) generate() error {
 	wg.Wait()
 	close(errCh)
 
-	errors := []string{}
+	errs := []string{}
 	for e := range errCh {
-		errors = append(errors, e...)
+		errs = append(errs, e...)
 	}
 
-	if len(errors) > 0 {
+	if len(errs) > 0 {
 		return fmt.Errorf("failed to generate site: \n\t%s",
-			strings.Join(errors, "\n\t"))
+			strings.Join(errs, "\n\t"))
 	}
 
 	return nil
 }
 
 func (s *site) walkRoot(p string, cb func(file) error) error {
-	if !s.dexists(p) {
+	if !s.dExists(p) {
 		return nil
 	}
 
@@ -240,11 +238,11 @@ func (s *site) loadData() error {
 	return err
 }
 
-func (s *site) fcreate(path string) (vfs.WFile, error) {
-	return fcreate(s.fs, path, createFlags, s.cfg.FileMode)
+func (s *site) fCreate(path string) (vfs.WFile, error) {
+	return fCreate(s.fs, path, createFlags, s.cfg.FileMode)
 }
 
-func (s *site) fexists(path string) bool {
+func (s *site) fExists(path string) bool {
 	info, err := s.fs.Stat(path)
 	if err != nil {
 		return false
@@ -253,7 +251,7 @@ func (s *site) fexists(path string) bool {
 	return !info.IsDir()
 }
 
-func (s *site) dexists(path string) bool {
+func (s *site) dExists(path string) bool {
 	info, err := s.fs.Stat(path)
 	if err != nil {
 		return false

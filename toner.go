@@ -33,13 +33,12 @@ func New(cfg Config) (*Toner, error) {
 		return nil, err
 	}
 
-	var v vfs.VFS
 	fs, err := vfs.FS(abs)
-	if err == nil {
-		v, err = vfs.Chroot(".", fs)
+	if err != nil {
+		return nil, err
 	}
 
-	return newToner(cfg, v), nil
+	return newToner(cfg, fs), nil
 }
 
 // Build builds the current site

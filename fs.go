@@ -3,11 +3,12 @@ package toner
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rainycape/vfs"
 )
 
-func fcreate(
+func fCreate(
 	fs vfs.VFS,
 	path string,
 	flag int,
@@ -21,4 +22,27 @@ func fcreate(
 	}
 
 	return fs.OpenFile(path, flag, perm)
+}
+
+func fDropFirst(path string) string {
+	if len(path) == 0 {
+		return ""
+	}
+
+	idx := strings.IndexRune(path[1:], os.PathSeparator)
+	if idx == -1 {
+		return ""
+	}
+
+	return path[idx+2:]
+}
+
+func fChangeExt(path, ext string) string {
+	rext := filepath.Ext(path)
+
+	if len(ext) > 0 && !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+
+	return path[0:len(path)-len(rext)] + ext
 }

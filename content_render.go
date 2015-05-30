@@ -10,8 +10,8 @@ import (
 type renderer interface {
 	handles(ext string) bool
 
-	// If the content should be rendered inside a template
-	templatable() bool
+	// If the content can be rendered
+	renderable() bool
 
 	// Get the extension for this content
 	ext(c *content) string
@@ -48,7 +48,7 @@ func (renderMarkdown) handles(ext string) bool {
 	}
 }
 
-func (renderMarkdown) templatable() bool {
+func (renderMarkdown) renderable() bool {
 	return true
 }
 
@@ -64,7 +64,7 @@ func (renderPassthru) handles(ext string) bool {
 	return true
 }
 
-func (renderPassthru) templatable() bool {
+func (renderPassthru) renderable() bool {
 	return false
 }
 

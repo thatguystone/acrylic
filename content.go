@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"path/filepath"
-	"strings"
 
+	p2 "github.com/flosch/pongo2"
 	"gopkg.in/yaml.v2"
 )
 
@@ -21,21 +20,26 @@ type content struct {
 	rend       renderer
 	rawContent []byte
 	content    []byte
+	assets     tplAssets
 	meta       data
-	k          *kind
 	tags       []*tag
 }
 
 var (
 	metaDelim         = []byte("---")
 	errMissingMetaEnd = errors.New("metadata missing closing `---`")
+	bannedContentTags = []string{
+		"js_tags",
+		"css_tags",
+	}
 )
 
 func (c *content) preprocess() error {
+	c.assets.assets = &c.s.a
 	c.meta = data{}
 	c.rend = getRenderer(c)
 
-	if !c.rend.templatable() {
+	if !c.rend.renderable() {
 		return nil
 	}
 
@@ -56,18 +60,10 @@ func (c *content) preprocess() error {
 		return err
 	}
 
-	c.setType()
+	c.f.dstPath = filepath.Join(c.s.cfg.PublicDir, fDropFirst(c.f.srcPath))
+	c.f.dstPath = fChangeExt(c.f.dstPath, c.rend.ext(c))
 
-	// Strip away first directory
-	c.f.dstPath = filepath.Join(
-		c.s.cfg.PublicDir,
-		c.f.srcPath[strings.IndexRune(c.f.srcPath[1:], os.PathSeparator)+1:])
-
-	// Replace extension
-	ext := filepath.Ext(c.f.dstPath)
-	c.f.dstPath = c.f.dstPath[0:len(c.f.dstPath)-len(ext)] + c.rend.ext(c)
-
-	c.rawContent, err = c.runTemplate(c.rawContent)
+	c.rawContent, err = c.executeTemplate(c.rawContent)
 	return err
 }
 
@@ -92,26 +88,35 @@ func (c *content) extractMeta() error {
 	return nil
 }
 
-func (c *content) setType() {
-
-}
-
-func (c *content) matchesDst() bool {
+func (c *content) sourceChanged() bool {
 	dstat, err := c.s.fs.Stat(c.f.dstPath)
 	if err != nil {
-		return false
+		return true
 	}
 
-	return dstat.ModTime().Equal(c.f.info.ModTime())
+	return !dstat.ModTime().Equal(c.f.info.ModTime())
 }
 
-func (c *content) runTemplate(rc []byte) ([]byte, error) {
-	return rc, nil
+func (c *content) executeTemplate(rc []byte) ([]byte, error) {
+	// Run in total isolation from everything: content shouldn't be able to
+	// modify layouts.
+	set := p2.NewSet("temp")
+
+	for _, t := range bannedContentTags {
+		set.BanTag(t)
+	}
+
+	tpl, err := set.FromString(string(rc))
+	if err != nil {
+		return nil, err
+	}
+
+	return tpl.ExecuteBytes(c.getContext())
 }
 
 func (c *content) render() error {
-	if !c.rend.templatable() {
-		if c.matchesDst() {
+	if !c.rend.renderable() {
+		if !c.sourceChanged() {
 			return nil
 		}
 
@@ -138,18 +143,24 @@ func (c *content) render() error {
 		return err
 	}
 
-	c.content, err = c.runTemplate(rc)
-	if err != nil {
-		return err
-	}
+	p, _ := filepath.Split(fDropFirst(c.f.srcPath))
+	lo := c.s.l.find(p, "_single")
 
-	fw, err := c.s.fcreate(c.f.dstPath)
+	fw, err := c.s.fCreate(c.f.dstPath)
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %s", err)
 	}
 
 	defer fw.Close()
-	_, err = fw.Write(rc)
 
-	return err
+	c.assets.append(&lo.assets)
+
+	return lo.render(c.s, c.getContext(), rc, fw)
+}
+
+func (c *content) getContext() p2.Context {
+	return p2.Context{
+		assetsKey:  &c.assets,
+		relPathKey: filepath.Dir(c.f.srcPath),
+	}
 }
