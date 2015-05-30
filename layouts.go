@@ -86,13 +86,13 @@ func (l *layouts) init() error {
 			}
 
 			lo := &layout{
-				tpl:    tpl,
-				path:   c.lout.path,
-				assets: tplAssets{assets: &l.s.a},
+				tpl:  tpl,
+				path: c.lout.path,
+				tpla: tplAssets{assets: &l.s.a},
 			}
 
 			if err == nil {
-				err = lo.prerender(l.s)
+				err = lo.preexecute(l.s)
 			}
 
 			if err == nil {

@@ -20,14 +20,13 @@ type content struct {
 	rend       renderer
 	rawContent []byte
 	content    []byte
-	assets     tplAssets
+	tpla       tplAssets
 	meta       data
 	tags       []*tag
 }
 
 var (
 	metaDelim         = []byte("---")
-	errMissingMetaEnd = errors.New("metadata missing closing `---`")
 	bannedContentTags = []string{
 		"js_tags",
 		"css_tags",
@@ -35,9 +34,12 @@ var (
 )
 
 func (c *content) preprocess() error {
-	c.assets.assets = &c.s.a
+	c.tpla.assets = &c.s.a
 	c.meta = data{}
 	c.rend = getRenderer(c)
+
+	c.f.dstPath = filepath.Join(c.s.cfg.PublicDir, fDropFirst(c.f.srcPath))
+	c.f.dstPath = fChangeExt(c.f.dstPath, c.rend.ext(c))
 
 	if !c.rend.renderable() {
 		return nil
@@ -60,9 +62,6 @@ func (c *content) preprocess() error {
 		return err
 	}
 
-	c.f.dstPath = filepath.Join(c.s.cfg.PublicDir, fDropFirst(c.f.srcPath))
-	c.f.dstPath = fChangeExt(c.f.dstPath, c.rend.ext(c))
-
 	c.rawContent, err = c.executeTemplate(c.rawContent)
 	return err
 }
@@ -74,7 +73,7 @@ func (c *content) extractMeta() error {
 
 	end := bytes.Index(c.rawContent[3:], metaDelim)
 	if end == -1 {
-		return errMissingMetaEnd
+		return errors.New("metadata missing closing `---`")
 	}
 
 	meta := bytes.TrimSpace(c.rawContent[3 : end+3])
@@ -127,9 +126,9 @@ func (c *content) render() error {
 
 		defer fr.Close()
 
-		fw, err := c.s.fs.OpenFile(c.f.dstPath, createFlags, c.s.cfg.FileMode)
+		fw, err := c.s.fCreate(c.f.dstPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create destination file: %s", err)
 		}
 
 		defer fw.Close()
@@ -153,14 +152,14 @@ func (c *content) render() error {
 
 	defer fw.Close()
 
-	c.assets.append(&lo.assets)
+	c.tpla.append(&lo.tpla)
 
-	return lo.render(c.s, c.getContext(), rc, fw)
+	return lo.execute(c.s, c.getContext(), rc, fw)
 }
 
 func (c *content) getContext() p2.Context {
 	return p2.Context{
-		assetsKey:  &c.assets,
+		assetsKey:  &c.tpla,
 		relPathKey: filepath.Dir(c.f.srcPath),
 	}
 }

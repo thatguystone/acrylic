@@ -11,7 +11,7 @@ import (
 
 type layout struct {
 	tpl     *p2.Template
-	assets  tplAssets
+	tpla    tplAssets
 	path    string
 	content string // Only set for default templates during loading
 }
@@ -20,19 +20,19 @@ type loPage struct {
 	Content *p2.Value
 }
 
-func (lo *layout) prerender(s *site) error {
+func (lo *layout) preexecute(s *site) error {
 	ctx := p2.Context{
-		assetsKey:  &lo.assets,
+		assetsKey:  &lo.tpla,
 		relPathKey: filepath.Dir(lo.path),
 	}
 
-	err := lo.render(s, ctx, nil, ioutil.Discard)
-	lo.assets.setRendered()
+	err := lo.execute(s, ctx, nil, ioutil.Discard)
+	lo.tpla.setRendered()
 
 	return err
 }
 
-func (lo *layout) render(s *site, ctx p2.Context, pc []byte, fw io.Writer) error {
+func (lo *layout) execute(s *site, ctx p2.Context, pc []byte, fw io.Writer) error {
 	ctx.Update(p2.Context{
 		"Page": loPage{
 			Content: p2.AsSafeValue(string(pc)),
@@ -42,7 +42,7 @@ func (lo *layout) render(s *site, ctx p2.Context, pc []byte, fw io.Writer) error
 	var b *bytes.Buffer
 	w := fw
 
-	minify := s.cfg.MinifyHTML && lo.assets.rendered
+	minify := s.cfg.MinifyHTML && lo.tpla.rendered
 
 	if minify {
 		b = &bytes.Buffer{}

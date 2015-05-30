@@ -1,6 +1,7 @@
 package toner
 
 import (
+	"fmt"
 	"io"
 	"sync"
 
@@ -10,7 +11,7 @@ import (
 type assets struct {
 	s    *site
 	mtx  sync.Mutex
-	imgs []struct{}
+	imgs []imgAsset
 }
 
 type tplAssets struct {
@@ -20,32 +21,79 @@ type tplAssets struct {
 	css      []string
 }
 
-func (a *tplAssets) append(o *tplAssets) {
-	a.js = append(a.js, o.js...)
-	a.css = append(a.css, o.css...)
-	a.setRendered()
+type imgAsset struct {
+	src  string
+	w    uint
+	h    uint
+	crop imgCrop
 }
 
-func (a *tplAssets) setRendered() {
-	a.rendered = true
+type imgCrop int
+
+const (
+	cropLeft imgCrop = iota
+	cropCentered
+	cropLen
+)
+
+func (c imgCrop) String() string {
+	switch c {
+	case cropLeft:
+		return "left"
+
+	case cropCentered:
+		return "center"
+	}
+
+	panic(fmt.Errorf("unrecognized crop value: %d", c))
 }
 
-func (a *tplAssets) addJS(file string) {
-	a.js = append(a.js, file)
+func (tpla *tplAssets) append(o *tplAssets) {
+	tpla.js = append(tpla.js, o.js...)
+	tpla.css = append(tpla.css, o.css...)
+	tpla.setRendered()
 }
 
-func (a *tplAssets) addCSS(file string) {
-	a.css = append(a.css, file)
+func (tpla *tplAssets) setRendered() {
+	tpla.rendered = true
 }
 
-func (a *tplAssets) writeJSTags(relPath string, w io.Writer) error {
-	if !a.rendered {
+func (tpla *tplAssets) addJS(file string) {
+	tpla.js = append(tpla.js, file)
+}
+
+func (tpla *tplAssets) addCSS(file string) {
+	tpla.css = append(tpla.css, file)
+}
+
+func (tpla *tplAssets) addAndWriteImg(
+	img imgAsset,
+	relPath string,
+	w io.Writer) error {
+
+	tpla.assets.mtx.Lock()
+	tpla.imgs = append(tpla.imgs, img)
+	tpla.assets.mtx.Unlock()
+
+	ctx := p2.Context{
+		"src":  img.src,
+		"w":    img.w,
+		"h":    img.h,
+		"crop": img.crop,
+	}
+
+	lo := tpla.s.l.find(relPath, "_img")
+	return lo.tpl.ExecuteWriter(ctx, w)
+}
+
+func (tpla *tplAssets) writeJSTags(relPath string, w io.Writer) error {
+	if !tpla.rendered {
 		return nil
 	}
 
-	lo := a.s.l.find(relPath, "_js")
+	lo := tpla.s.l.find(relPath, "_js")
 
-	for _, js := range a.js {
+	for _, js := range tpla.js {
 		err := lo.tpl.ExecuteWriter(p2.Context{"src": js}, w)
 		if err != nil {
 			return err
@@ -55,14 +103,14 @@ func (a *tplAssets) writeJSTags(relPath string, w io.Writer) error {
 	return nil
 }
 
-func (a *tplAssets) writeCSSTags(relPath string, w io.Writer) error {
-	if !a.rendered {
+func (tpla *tplAssets) writeCSSTags(relPath string, w io.Writer) error {
+	if !tpla.rendered {
 		return nil
 	}
 
-	lo := a.s.l.find(relPath, "_css")
+	lo := tpla.s.l.find(relPath, "_css")
 
-	for _, css := range a.css {
+	for _, css := range tpla.css {
 		err := lo.tpl.ExecuteWriter(p2.Context{"href": css}, w)
 		if err != nil {
 			return err

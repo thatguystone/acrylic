@@ -2,7 +2,6 @@ package toner
 
 import (
 	"fmt"
-	"path/filepath"
 
 	p2 "github.com/flosch/pongo2"
 )
@@ -10,7 +9,6 @@ import (
 func init() {
 	p2.RegisterTag("js", jsTag)
 	p2.RegisterTag("css", cssTag)
-	p2.RegisterTag("img", cssTag)
 
 	p2.RegisterTag("js_tags", jsTags)
 	p2.RegisterTag("css_tags", cssTags)
@@ -34,22 +32,20 @@ func (n jsCSSTagNode) Execute(
 	ctx *p2.ExecutionContext,
 	w p2.TemplateWriter) *p2.Error {
 
-	a := ctx.Public[assetsKey].(*tplAssets)
-	if a.rendered {
+	tpla := ctx.Public[assetsKey].(*tplAssets)
+	if tpla.rendered {
 		return nil
 	}
 
 	relPath := ctx.Public[relPathKey].(string)
 
 	for _, path := range n.paths {
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(relPath, path)
-		}
+		path = fRelPath(relPath, path)
 
 		if n.js {
-			a.addJS(path)
+			tpla.addJS(path)
 		} else {
-			a.addCSS(path)
+			tpla.addCSS(path)
 		}
 	}
 
@@ -99,14 +95,14 @@ func (js jsCSSTagsNode) Execute(
 	ctx *p2.ExecutionContext,
 	w p2.TemplateWriter) *p2.Error {
 
-	a := ctx.Public[assetsKey].(*tplAssets)
+	tpla := ctx.Public[assetsKey].(*tplAssets)
 	relPath := ctx.Public[relPathKey].(string)
 
 	var err error
 	if js {
-		err = a.writeJSTags(relPath, w)
+		err = tpla.writeJSTags(relPath, w)
 	} else {
-		err = a.writeCSSTags(relPath, w)
+		err = tpla.writeCSSTags(relPath, w)
 	}
 
 	if err != nil {
