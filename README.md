@@ -11,10 +11,14 @@ Directory layout:
 Tags:
 
 * `js <string>`: add a script to page
-* `js_tags`: print out all js tags
+* `js_all`: print the combined js tag
 * `css <string>`: add a css file to page
-* `css_tags`: print out all css tags
+* `css_all`: print the combined css tag
 * `img <src> [opts...]`: insert an image; opts follow
 	# width=px - use 0 to scale automatically
 	# height=px - use 0 to scale automatically
 	# crop="<left,centered>" (quotes matter)
+
+Notes:
+
+* Content exists independent of extension: `test.html` and `test.png` are the same.

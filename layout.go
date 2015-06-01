@@ -3,36 +3,24 @@ package toner
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
-	"path/filepath"
 
 	p2 "github.com/flosch/pongo2"
 )
 
 type layout struct {
-	tpl     *p2.Template
-	tpla    tplAssets
-	path    string
-	content string // Only set for default templates during loading
+	tpl      *p2.Template
+	s        *site
+	which    string
+	filePath string
+	content  string // Used for internal templates
 }
 
 type loPage struct {
 	Content *p2.Value
 }
 
-func (lo *layout) preexecute(s *site) error {
-	ctx := p2.Context{
-		assetsKey:  &lo.tpla,
-		relPathKey: filepath.Dir(lo.path),
-	}
-
-	err := lo.execute(s, ctx, nil, ioutil.Discard)
-	lo.tpla.setRendered()
-
-	return err
-}
-
-func (lo *layout) execute(s *site, ctx p2.Context, pc []byte, fw io.Writer) error {
+func (lo *layout) execute(ctx p2.Context, pc []byte, fw io.Writer) error {
+	// NEED TO PROVIDE LAYOUT relPath SO IT DOESN'T USE CONTENT'S; ALSO NEED FILTER `contentRel` TO GET PATHS SPECIFIED BY CONTENT (IE. HEADER IMG FOR BLOG POSTS)
 	ctx.Update(p2.Context{
 		"Page": loPage{
 			Content: p2.AsSafeValue(string(pc)),
@@ -42,9 +30,7 @@ func (lo *layout) execute(s *site, ctx p2.Context, pc []byte, fw io.Writer) erro
 	var b *bytes.Buffer
 	w := fw
 
-	minify := s.cfg.MinifyHTML && lo.tpla.rendered
-
-	if minify {
+	if lo.s.cfg.MinifyHTML {
 		b = &bytes.Buffer{}
 		w = b
 	}
@@ -54,8 +40,8 @@ func (lo *layout) execute(s *site, ctx p2.Context, pc []byte, fw io.Writer) erro
 		return err
 	}
 
-	if minify {
-		err = s.min.Minify("text/html", fw, bytes.NewReader(b.Bytes()))
+	if lo.s.cfg.MinifyHTML {
+		err = lo.s.min.Minify("text/html", fw, bytes.NewReader(b.Bytes()))
 	}
 
 	return err

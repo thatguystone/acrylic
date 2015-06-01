@@ -31,3 +31,26 @@ func TestFSChangeExt(t *testing.T) {
 	a.Equal("file..ext", fChangeExt("file.test", "..ext"))
 	a.Equal("file", fChangeExt("file.test", ""))
 }
+
+func TestFSPathCheckFor(t *testing.T) {
+	t.Parallel()
+	a := assert.From(t)
+
+	a.Equal("test", fPathCheckFor("/some/path/test", "test", "or", "something"))
+	a.Equal("test", fPathCheckFor("/some/path/test/", "test", "or", "something"))
+	a.Equal("test", fPathCheckFor("/some/path/test/another", "test", "or", "something"))
+	a.Equal("test", fPathCheckFor("test/some/path", "test", "or", "something"))
+	a.Equal("", fPathCheckFor("/some/tests/path", "test", "or", "something"))
+}
+
+func TestFSDropRoot(t *testing.T) {
+	t.Parallel()
+	a := assert.From(t)
+
+	in := "/some/root/test/another"
+	out := "test/another"
+
+	a.Equal(out, fDropRoot("/some/root", in))
+	a.Equal(out, fDropRoot("/some/root/", in))
+	a.Equal(in, fDropRoot("/some/not/root/", in))
+}

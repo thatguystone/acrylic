@@ -1,27 +1,51 @@
 package toner
 
 import (
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/rainycape/vfs"
 )
 
-func fCreate(
-	fs vfs.VFS,
-	path string,
-	flag int,
-	perm os.FileMode) (vfs.WFile, error) {
+const createFlags = os.O_RDWR | os.O_CREATE | os.O_TRUNC
 
+func fCreate(path string, flag int, perm os.FileMode) (*os.File, error) {
 	dir, _ := filepath.Split(path)
 
-	err := vfs.MkdirAll(fs, dir, 0750)
+	err := os.MkdirAll(dir, 0750)
 	if err != nil {
 		return nil, err
 	}
 
-	return fs.OpenFile(path, flag, perm)
+	return os.OpenFile(path, flag, perm)
+}
+
+func fWrite(path string, c []byte, perm os.FileMode) error {
+	dir, _ := filepath.Split(path)
+	err := os.MkdirAll(dir, 0750)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(path, c, perm)
+}
+
+func fExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+	return !info.IsDir()
+}
+
+func dExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+	return info.IsDir()
 }
 
 func fDropFirst(path string) string {
@@ -53,4 +77,30 @@ func fRelPath(rel, path string) string {
 	}
 
 	return filepath.Join(rel, path)
+}
+
+func fPathCheckFor(in string, any ...string) string {
+	for _, a := range any {
+		found := strings.HasPrefix(in, filepath.Clean(a+"/")) ||
+			strings.HasSuffix(in, filepath.Clean("/"+a)) ||
+			strings.Contains(in, filepath.Clean("/"+a)+"/")
+
+		if found {
+			return a
+		}
+	}
+
+	return ""
+}
+
+func fDropRoot(root, path string) string {
+	if !strings.HasSuffix(root, "/") {
+		root += "/"
+	}
+
+	if strings.HasPrefix(path, root) {
+		return path[len(root):]
+	}
+
+	return path
 }
