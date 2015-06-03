@@ -4,8 +4,12 @@ import "gopkg.in/yaml.v2"
 
 type meta map[string]interface{}
 
-func (m meta) merge(b []byte) error {
-	return yaml.Unmarshal(b, &m)
+func (m *meta) merge(b []byte) error {
+	return yaml.Unmarshal(b, m)
+}
+
+func (m *meta) has() bool {
+	return len(*m) > 0
 }
 
 func (m meta) publish() bool {

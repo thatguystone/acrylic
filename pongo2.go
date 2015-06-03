@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	contentKey = "__tonerContent__"
-	siteKey    = "__tonerSite__"
+	contentKey  = "__tonerContent__"
+	privSiteKey = "__tonerSite__"
 )
 
 func init() {
@@ -19,6 +19,9 @@ func init() {
 
 	p2.RegisterTag("js_all", jsAllTag)
 	p2.RegisterTag("css_all", cssAllTag)
+
+	// NEED TO PROVIDE LAYOUT relPath SO IT DOESN'T USE CONTENT'S; ALSO NEED FILTER `contentRel` TO GET PATHS SPECIFIED BY CONTENT (IE. HEADER IMG FOR BLOG POSTS)
+	p2.RegisterFilter("content_rel", nil)
 }
 
 type p2RelNode struct {
@@ -44,7 +47,7 @@ func (n assetTagNode) Execute(
 	ctx *p2.ExecutionContext,
 	w p2.TemplateWriter) *p2.Error {
 
-	s := ctx.Public[siteKey].(*site)
+	s := ctx.Public[privSiteKey].(*site)
 	pc := ctx.Public[contentKey].(*content)
 	currFile := n.contentRel(pc)
 

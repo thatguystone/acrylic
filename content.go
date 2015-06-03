@@ -25,7 +25,7 @@ type content struct {
 	f          file
 	cpath      string
 	metaEnd    int
-	meta       meta
+	meta       *meta
 	tplContext p2.Context
 	gen        interface{}
 }
@@ -44,6 +44,10 @@ var (
 		"extends",
 		"js_all",
 	}
+
+	bannedContentFilters = []string{
+		"content_rel",
+	}
 )
 
 func (cs *contents) init(s *site) {
@@ -61,12 +65,17 @@ func (cs *contents) add(f file) error {
 		cs:    cs,
 		f:     f,
 		cpath: cpath,
-		tplContext: p2.Context{
-			siteKey: cs.s,
+		meta:  &meta{},
+	}
+
+	c.tplContext = p2.Context{
+		privSiteKey: cs.s,
+		contentKey:  c,
+		"Page": PageCtx{
+			Meta: c.meta,
 		},
 	}
 
-	c.tplContext[contentKey] = c
 	c.gen = cs.getGenerator(c, ext)
 
 	cs.mtx.Lock()
@@ -183,16 +192,26 @@ func (c *content) load() error {
 }
 
 func (c *content) processMeta(m []byte, isMetaFile bool) error {
-	if !bytes.HasPrefix(m, metaDelim) && !isMetaFile {
-		return nil
+	start := 3
+	if !bytes.HasPrefix(m, metaDelim) {
+		if !isMetaFile {
+			return nil
+		}
+		start = 0
 	}
 
 	end := bytes.Index(m[3:], metaDelim)
-	if end == -1 && !isMetaFile {
-		return nil
+	if end == -1 {
+		if !isMetaFile {
+			return nil
+		}
+
+		end = len(m)
+	} else {
+		end += 3
 	}
 
-	m = bytes.TrimSpace(m[3 : end+3])
+	m = bytes.TrimSpace(m[start:end])
 	return c.meta.merge(m)
 }
 
@@ -229,6 +248,10 @@ func (c *content) templatize(w io.Writer) error {
 
 	for _, t := range bannedContentTags {
 		set.BanTag(t)
+	}
+
+	for _, f := range bannedContentFilters {
+		set.BanFilter(f)
 	}
 
 	tpl, err := set.FromString(string(b[c.metaEnd:]))

@@ -60,7 +60,7 @@ var (
 		},
 		testFile{
 			p: "layouts/blog/_single.html",
-			sc: "<body>Blog layout: {{ Page.Content }}\n</body>" +
+			sc: "<body>Blog layout: {{ Content }}\n</body>" +
 				"{% js \"layout.js\" %}\n" +
 				"{% css \"layout.css\" %}\n" +
 				"{% js_all %}\n" +
@@ -78,11 +78,15 @@ var (
 		},
 		testFile{
 			p:  "layouts/blog/layout2.js",
-			sc: "layout 2 js!",
+			sc: "---\nrender: true\nval: layout 2\n---\n{{ Page.Meta.val }} js!",
 		},
 		testFile{
 			p:  "layouts/blog/layout2.css",
-			sc: "layout 2 css!",
+			sc: "{{ Page.Meta.val }} css!",
+		},
+		testFile{
+			p:  "layouts/blog/layout2.meta",
+			sc: "render: true\nval: layout 2",
 		},
 		testFile{
 			dir: true,
@@ -182,4 +186,9 @@ func TestBasicSite(t *testing.T) {
 		`Blog layout:<h1>post 1</h1><p>post 1<script src=post1.js></script><link rel=stylesheet href=post1.css><script src=../layout/blog/layout.js></script><link rel=stylesheet href=../layout/blog/layout.css><script src=../layout/blog/layout2.js></script><link rel=stylesheet href=../layout/blog/layout2.css>`)
 	tt.checkFile("public/blog/post2.html",
 		`Blog layout:<h1>post 2</h1><p>post 2<script src=post2.js></script><link rel=stylesheet href=post2.css><script src=../layout/blog/layout.js></script><link rel=stylesheet href=../layout/blog/layout.css><script src=../layout/blog/layout2.js></script><link rel=stylesheet href=../layout/blog/layout2.css>`)
+
+	tt.checkFile("public/layout/blog/layout2.js",
+		`layout 2 js!`)
+	tt.checkFile("public/layout/blog/layout2.css",
+		`layout 2 css!`)
 }

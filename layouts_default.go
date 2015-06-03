@@ -6,7 +6,7 @@ var (
 		"_css":     `<link type="text/css" rel="stylesheet" href="{{ href }}">` + "\n",
 		"_img_tag": `<img src="{{ src }}">`,
 		"_img":     `<not yet implemented>`,
-		"_single":  "{{ Page.Content }}",
+		"_single":  "{{ Content }}",
 		"_list":    "<not yet implemented>",
 	}
 )

@@ -15,16 +15,10 @@ type layout struct {
 	content  string // Used for internal templates
 }
 
-type loPage struct {
-	Content *p2.Value
-}
-
 func (lo *layout) execute(ctx p2.Context, pc []byte, fw io.Writer) error {
 	// NEED TO PROVIDE LAYOUT relPath SO IT DOESN'T USE CONTENT'S; ALSO NEED FILTER `contentRel` TO GET PATHS SPECIFIED BY CONTENT (IE. HEADER IMG FOR BLOG POSTS)
 	ctx.Update(p2.Context{
-		"Page": loPage{
-			Content: p2.AsSafeValue(string(pc)),
-		},
+		"Content": p2.AsSafeValue(string(pc)),
 	})
 
 	var b *bytes.Buffer

@@ -172,7 +172,7 @@ func (gab contentGenAssetBase) generatePage() (dstPath string, err error) {
 
 	b := bytes.Buffer{}
 
-	if len(c.meta) > 0 {
+	if c.meta.has() {
 		err = c.templatize(&b)
 	} else {
 		err = c.readAll(&b)
