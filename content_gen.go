@@ -1,14 +1,20 @@
 package toner
 
-import "bytes"
+import (
+	"bytes"
+
+	p2 "github.com/flosch/pongo2"
+)
 
 type contentGener interface {
 	// Attempt to get a content generator from this guy, if it handles it.
 	getGenerator(c *content, ext string) interface{}
 
-	// Generates the page and return its URL. All URLs are relative to the
-	// public dir.
+	// Generates the page and return its file path.
 	generatePage() (string, error)
+
+	// Name of this content, as a human would know it
+	humanName() string
 }
 
 type contentGenBase struct {
@@ -18,9 +24,10 @@ type contentGenBase struct {
 
 type contentGenAssetBase struct {
 	contentGenBase
-	ext    string
-	render bool
-	min    Minifier
+	assetDir string
+	ext      string
+	render   bool
+	min      Minifier
 }
 
 type contentGenPage struct {
@@ -44,6 +51,7 @@ var (
 		contentGenPage{},
 		contentGenJS{},
 		contentGenCSS{},
+		contentGenImg{},
 		contentGenPassthru{},
 	}
 
@@ -122,7 +130,13 @@ func (gp contentGenPage) generatePage() (string, error) {
 	defer f.Close()
 
 	lo := s.findLayout(c.cpath, "_single")
-	return dstPath, lo.execute(c.tplContext, rc, f)
+	c.tplContext["Content"] = p2.AsSafeValue(string(rc))
+
+	return dstPath, lo.execute(c.tplContext, f)
+}
+
+func (contentGenPage) humanName() string {
+	return "page"
 }
 
 func (gjs contentGenJS) getGenerator(c *content, ext string) interface{} {
@@ -134,10 +148,15 @@ func (gjs contentGenJS) getGenerator(c *content, ext string) interface{} {
 	cfg := c.cs.s.cfg
 	return contentGenJS{contentGenAssetBase{
 		contentGenBase: b,
+		assetDir:       "js",
 		ext:            ".js",
 		render:         cfg.RenderJS,
 		min:            cfg.MinifyJS,
 	}}
+}
+
+func (contentGenJS) humanName() string {
+	return "js"
 }
 
 func (gcss contentGenCSS) getGenerator(c *content, ext string) interface{} {
@@ -149,10 +168,15 @@ func (gcss contentGenCSS) getGenerator(c *content, ext string) interface{} {
 	cfg := c.cs.s.cfg
 	return contentGenCSS{contentGenAssetBase{
 		contentGenBase: b,
+		assetDir:       "css",
 		ext:            ".css",
 		render:         cfg.RenderCSS,
 		min:            cfg.MinifyCSS,
 	}}
+}
+
+func (contentGenCSS) humanName() string {
+	return "css"
 }
 
 func (gab contentGenAssetBase) generatePage() (dstPath string, err error) {
@@ -161,9 +185,9 @@ func (gab contentGenAssetBase) generatePage() (dstPath string, err error) {
 
 	alreadyClaimed := false
 	if gab.render {
-		dstPath, alreadyClaimed, err = c.claimDest(gab.ext)
+		dstPath, alreadyClaimed, err = c.claimStaticDest(gab.assetDir, gab.ext)
 	} else {
-		dstPath, alreadyClaimed, err = c.claimDest("")
+		dstPath, alreadyClaimed, err = c.claimStaticDest(gab.assetDir, "")
 	}
 
 	if alreadyClaimed || err != nil {
@@ -211,4 +235,8 @@ func (contentGenPassthru) getGenerator(c *content, ext string) interface{} {
 
 func (gpt contentGenPassthru) generatePage() (string, error) {
 	return "", nil
+}
+
+func (contentGenPassthru) humanName() string {
+	return "binary blob"
 }

@@ -29,11 +29,16 @@ type site struct {
 
 type data map[string]interface{}
 
-var reservedPaths = []string{
-	layoutPubDir,
-	staticPubDir,
-	themePubDir,
-}
+var (
+	reservedPaths = []string{
+		layoutPubDir,
+		themePubDir,
+	}
+	reservedInternalPaths = []string{
+		imgPubDir,
+		staticPubDir,
+	}
+)
 
 func newSite(cfg *Config) *site {
 	s := &site{
@@ -81,6 +86,11 @@ func (s *site) addContent(f file, isContent bool) {
 			s.errs.add(f.srcPath, fmt.Errorf("use of reserved path `%s` is not allowed", res))
 			return
 		}
+	}
+
+	if res := fPathCheckFor(f.dstPath, reservedInternalPaths...); res != "" {
+		s.errs.add(f.srcPath, fmt.Errorf("use of reserved path `%s` is not allowed", res))
+		return
 	}
 
 	s.contentCh <- f

@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	contentKey  = "__tonerContent__"
-	privSiteKey = "__tonerSite__"
+	contentKey   = "__tonerContent__"
+	parentRelKey = "__tonerParentRel__"
+	privSiteKey  = "__tonerSite__"
 )
 
 func init() {
@@ -21,7 +22,7 @@ func init() {
 	p2.RegisterTag("css_all", cssAllTag)
 
 	// NEED TO PROVIDE LAYOUT relPath SO IT DOESN'T USE CONTENT'S; ALSO NEED FILTER `contentRel` TO GET PATHS SPECIFIED BY CONTENT (IE. HEADER IMG FOR BLOG POSTS)
-	p2.RegisterFilter("content_rel", nil)
+	// p2.RegisterFilter("content_rel", contentRelFilt)
 }
 
 type p2RelNode struct {
@@ -67,13 +68,16 @@ func (n assetTagNode) Execute(
 
 		ok := reflect.TypeOf(c.gen) == n.genType
 		if !ok {
-			s.errs.add(currFile, fmt.Errorf("%s: `%s` is not a %s file", n.what, path, n.what))
+			s.errs.add(currFile,
+				fmt.Errorf("%s: `%s` is not a %s file, have %s",
+					n.what, path, n.what,
+					c.gen.(contentGener).humanName()))
 			continue
 		}
 
-		_, err = c.gen.(contentGener).generatePage()
+		path, err = c.gen.(contentGener).generatePage()
 		if err == nil {
-			relPath := c.relDestTo(pc)
+			relPath := c.relDest(path)
 			err = n.writer(c, relPath, w)
 		}
 
@@ -139,7 +143,7 @@ func assetTag(what string, d *p2.Parser, s *p2.Token, args *p2.Parser) (assetTag
 	}
 
 	n := assetTagNode{
-		p2RelNode: p2RelFromToken(d),
+		p2RelNode: p2RelFromToken(s),
 		what:      what,
 		srcs:      srcs,
 	}
@@ -173,7 +177,7 @@ func cssTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error)
 
 func jsAllTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
 	if args.Count() > 0 {
-		return nil, args.Error("js_all: no arguments are accepted", nil)
+		return nil, args.Error("js_all: no arguments expected", nil)
 	}
 
 	return jsAllNode{}, nil
@@ -181,14 +185,14 @@ func jsAllTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Erro
 
 func cssAllTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
 	if args.Count() > 0 {
-		return nil, args.Error("css_all: no arguments are accepted", nil)
+		return nil, args.Error("css_all: no arguments expected", nil)
 	}
 
 	return cssAllNode{}, nil
 }
 
-func p2RelFromToken(d *p2.Parser) p2RelNode {
-	f := d.Current().Filename
+func p2RelFromToken(t *p2.Token) p2RelNode {
+	f := t.Filename
 	if f == "<string>" {
 		f = ""
 	}

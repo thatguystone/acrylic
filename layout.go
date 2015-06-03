@@ -15,12 +15,7 @@ type layout struct {
 	content  string // Used for internal templates
 }
 
-func (lo *layout) execute(ctx p2.Context, pc []byte, fw io.Writer) error {
-	// NEED TO PROVIDE LAYOUT relPath SO IT DOESN'T USE CONTENT'S; ALSO NEED FILTER `contentRel` TO GET PATHS SPECIFIED BY CONTENT (IE. HEADER IMG FOR BLOG POSTS)
-	ctx.Update(p2.Context{
-		"Content": p2.AsSafeValue(string(pc)),
-	})
-
+func (lo *layout) execute(ctx p2.Context, fw io.Writer) error {
 	var b *bytes.Buffer
 	w := fw
 

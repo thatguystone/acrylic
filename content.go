@@ -31,6 +31,7 @@ type content struct {
 }
 
 const (
+	imgPubDir    = "img"
 	layoutPubDir = "layout"
 	staticPubDir = "static"
 	themePubDir  = "theme"
@@ -43,10 +44,6 @@ var (
 		"css_all",
 		"extends",
 		"js_all",
-	}
-
-	bannedContentFilters = []string{
-		"content_rel",
 	}
 )
 
@@ -215,9 +212,9 @@ func (c *content) processMeta(m []byte, isMetaFile bool) error {
 	return c.meta.merge(m)
 }
 
-func (c *content) relDestTo(o *content) string {
-	od := filepath.Dir(o.f.dstPath)
-	d, f := filepath.Split(c.f.dstPath)
+func (c *content) relDest(otherPath string) string {
+	od := filepath.Dir(c.f.dstPath)
+	d, f := filepath.Split(otherPath)
 
 	rel, err := filepath.Rel(od, d)
 	if err != nil {
@@ -228,7 +225,18 @@ func (c *content) relDestTo(o *content) string {
 }
 
 func (c *content) claimDest(ext string) (string, bool, error) {
-	dst := c.f.dstPath
+	return c.claimOtherDest(c.f.dstPath, ext)
+}
+
+func (c *content) claimStaticDest(which, ext string) (string, bool, error) {
+	cfg := c.cs.s.cfg
+	p := fDropFirst(fDropRoot(cfg.Root, c.f.dstPath))
+	p = filepath.Join(cfg.Root, cfg.PublicDir, staticPubDir, which, p)
+
+	return c.claimOtherDest(p, ext)
+}
+
+func (c *content) claimOtherDest(dst, ext string) (string, bool, error) {
 	if ext != "" {
 		dst = fChangeExt(dst, ext)
 	}
@@ -248,10 +256,6 @@ func (c *content) templatize(w io.Writer) error {
 
 	for _, t := range bannedContentTags {
 		set.BanTag(t)
-	}
-
-	for _, f := range bannedContentFilters {
-		set.BanFilter(f)
 	}
 
 	tpl, err := set.FromString(string(b[c.metaEnd:]))

@@ -60,7 +60,10 @@ var (
 		},
 		testFile{
 			p: "layouts/blog/_single.html",
-			sc: "<body>Blog layout: {{ Content }}\n</body>" +
+			sc: "<body>" +
+				"Blog layout: {{ Content }}" +
+				`{% img "img.png" %}` +
+				"</body>" +
 				"{% js \"layout.js\" %}\n" +
 				"{% css \"layout.css\" %}\n" +
 				"{% js_all %}\n" +
@@ -87,6 +90,10 @@ var (
 		testFile{
 			p:  "layouts/blog/layout2.meta",
 			sc: "render: true\nval: layout 2",
+		},
+		testFile{
+			p:  "layouts/blog/img.png",
+			bc: pngBin,
 		},
 		testFile{
 			dir: true,
@@ -177,18 +184,18 @@ func TestBasicSite(t *testing.T) {
 	tt := testNew(t, true, basicSite)
 	defer tt.cleanup()
 
-	tt.exists("public/blog/post1.js")
-	tt.exists("public/blog/post1.css")
-	tt.exists("public/blog/post2.js")
-	tt.exists("public/blog/post2.css")
+	tt.exists("public/static/js/blog/post1.js")
+	tt.exists("public/static/js/blog/post2.js")
+	tt.exists("public/static/css/blog/post1.css")
+	tt.exists("public/static/css/blog/post2.css")
 
 	tt.checkFile("public/blog/post1.html",
-		`Blog layout:<h1>post 1</h1><p>post 1<script src=post1.js></script><link rel=stylesheet href=post1.css><script src=../layout/blog/layout.js></script><link rel=stylesheet href=../layout/blog/layout.css><script src=../layout/blog/layout2.js></script><link rel=stylesheet href=../layout/blog/layout2.css>`)
+		`Blog layout:<h1>post 1</h1><p>post 1<script src=../static/js/blog/post1.js></script><link rel=stylesheet href=../static/css/blog/post1.css></p><img src=../static/img/layout/blog/img.png><script src=../../static/js/layout/blog/layout.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout.css><script src=../../static/js/layout/blog/layout2.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout2.css>`)
 	tt.checkFile("public/blog/post2.html",
-		`Blog layout:<h1>post 2</h1><p>post 2<script src=post2.js></script><link rel=stylesheet href=post2.css><script src=../layout/blog/layout.js></script><link rel=stylesheet href=../layout/blog/layout.css><script src=../layout/blog/layout2.js></script><link rel=stylesheet href=../layout/blog/layout2.css>`)
+		`Blog layout:<h1>post 2</h1><p>post 2<script src=../static/js/blog/post2.js></script><link rel=stylesheet href=../static/css/blog/post2.css></p><img src=../static/img/layout/blog/img.png><script src=../../static/js/layout/blog/layout.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout.css><script src=../../static/js/layout/blog/layout2.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout2.css>`)
 
-	tt.checkFile("public/layout/blog/layout2.js",
+	tt.checkFile("public/static/js/layout/blog/layout2.js",
 		`layout 2 js!`)
-	tt.checkFile("public/layout/blog/layout2.css",
+	tt.checkFile("public/static/css/layout/blog/layout2.css",
 		`layout 2 css!`)
 }

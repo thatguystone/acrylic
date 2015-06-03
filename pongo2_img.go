@@ -1,205 +1,323 @@
 package toner
 
-// import (
-// 	"fmt"
+import (
+	"fmt"
+	"strings"
 
-// 	p2 "github.com/flosch/pongo2"
-// )
+	p2 "github.com/flosch/pongo2"
+)
 
-// func init() {
-// 	p2.RegisterTag("img", imgTag)
-// }
+func init() {
+	p2.RegisterTag("img", imgTag)
+	p2.RegisterTag("img_src", imgSrcTag)
+}
 
-// type imgTagNode struct {
-// 	src  p2.IEvaluator
-// 	w    p2.IEvaluator
-// 	h    p2.IEvaluator
-// 	crop p2.IEvaluator
-// }
+type imgTagNodeBase struct {
+	p2RelNode
+	src  p2.IEvaluator
+	ext  p2.IEvaluator
+	w    p2.IEvaluator
+	h    p2.IEvaluator
+	crop p2.IEvaluator
+}
 
-// func (n imgTagNode) Execute(
-// 	ctx *p2.ExecutionContext,
-// 	w p2.TemplateWriter) *p2.Error {
+type imgTagNode struct {
+	imgTagNodeBase
+}
 
-// 	s := ctx.Public[siteKey].(*site)
-// 	c := ctx.Public[contentKey].(content)
+type imgSrcTagNode struct {
+	imgTagNodeBase
+}
 
-// 	evals := [...]p2.IEvaluator{
-// 		n.src,
-// 		n.w,
-// 		n.h,
-// 		n.crop,
-// 	}
+func (n imgTagNodeBase) getImg(ctx *p2.ExecutionContext) (img img, err *p2.Error) {
+	evals := [...]p2.IEvaluator{
+		n.src,
+		n.ext,
+		n.w,
+		n.h,
+		n.crop,
+	}
 
-// 	vals := [len(evals)]*p2.Value{}
+	vals := [len(evals)]*p2.Value{}
 
-// 	for i, ev := range evals {
-// 		if ev == nil {
-// 			continue
-// 		}
+	for i, ev := range evals {
+		if ev == nil {
+			continue
+		}
 
-// 		v, err := n.src.Evaluate(ctx)
-// 		if err != nil {
-// 			return err
-// 		}
+		var v *p2.Value
+		v, err = ev.Evaluate(ctx)
+		if err != nil {
+			return
+		}
 
-// 		vals[i] = v
-// 	}
+		vals[i] = v
+	}
 
-// 	img := img{}
+	i := 0
 
-// 	if !vals[0].IsString() {
-// 		return ctx.Error("img: src must be a string", nil)
-// 	}
+	if !vals[i].IsString() {
+		err = ctx.Error("img: src must be a string", nil)
+		return
+	}
 
-// 	img.src = vals[0].String()
+	img.src = vals[i].String()
 
-// 	haveWorH := false
-// 	if vals[1] != nil {
-// 		if !vals[1].IsInteger() {
-// 			return ctx.Error("img: width must be an integer", nil)
-// 		}
+	i++
+	if vals[i] != nil {
+		if !vals[i].IsString() {
+			err = ctx.Error("img: extension must be a string", nil)
+			return
+		}
 
-// 		w := vals[1].Integer()
-// 		if w < 0 {
-// 			return ctx.Error("img: width must be greather than 0", nil)
-// 		}
+		ext := vals[i].String()
 
-// 		haveWorH = true
-// 		img.w = uint(w)
-// 	}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
 
-// 	if vals[2] != nil {
-// 		if !vals[2].IsInteger() {
-// 			return ctx.Error("img: height must be an integer", nil)
-// 		}
+		okExt := false
+		for _, e := range imgExts {
+			if ext == e {
+				okExt = true
+				break
+			}
+		}
 
-// 		h := vals[2].Integer()
-// 		if h < 0 {
-// 			return ctx.Error("img: height must be greather than 0", nil)
-// 		}
+		if !okExt {
+			err = ctx.Error(fmt.Sprintf(
+				"img: %s is an invalid image extension, must be one of %v",
+				ext,
+				imgExts),
+				nil)
+			return
+		}
 
-// 		haveWorH = true
-// 		img.h = uint(h)
-// 	}
+		img.ext = ext
+	}
 
-// 	if vals[3] != nil {
-// 		if !vals[3].IsString() {
-// 			return ctx.Error("img: crop must be a string", nil)
-// 		}
+	i++
+	haveWorH := false
+	if vals[i] != nil {
+		if !vals[i].IsInteger() {
+			err = ctx.Error("img: width must be an integer", nil)
+			return
+		}
 
-// 		switch vals[2].String() {
-// 		case "centered":
-// 			img.crop = cropCentered
+		w := vals[i].Integer()
+		if w < 0 {
+			err = ctx.Error("img: width must be greather than 0", nil)
+			return
+		}
 
-// 		case "left":
-// 			img.crop = cropLeft
+		haveWorH = true
+		img.w = uint(w)
+	}
 
-// 		default:
-// 			return ctx.Error(
-// 				fmt.Sprintf("img: unrecognized crop argument: %s", vals[2].String()),
-// 				nil)
-// 		}
-// 	}
+	i++
+	if vals[i] != nil {
+		if !vals[i].IsInteger() {
+			err = ctx.Error("img: height must be an integer", nil)
+			return
+		}
 
-// 	if haveWorH && img.h == 0 && img.w == 0 {
-// 		return ctx.Error("img: image width or height must be greater than 0", nil)
-// 	}
+		h := vals[i].Integer()
+		if h < 0 {
+			err = ctx.Error("img: height must be greather than 0", nil)
+			return
+		}
 
-// 	rc := s.getRelContent(c, fChangeExt(img.src, ""))
-// 	if rc == nil {
-// 		s.addError(c, fmt.Errorf("image not found: %s", img.src))
-// 	} else {
-// 		var err error
+		haveWorH = true
+		img.h = uint(h)
+	}
 
-// 		ci, ok := rc.(*contentImg)
-// 		if !ok {
-// 			err = fmt.Errorf("img: %s is not an image and can't be scaled",
-// 				img.src)
-// 		}
+	i++
+	if vals[i] != nil {
+		if !vals[i].IsString() {
+			err = ctx.Error("img: crop must be a string", nil)
+			return
+		}
 
-// 		if err == nil {
-// 			err = ci.scale(img)
-// 		}
+		switch vals[i].String() {
+		case "centered":
+			img.crop = cropCentered
 
-// 		if err != nil {
-// 			s.addError(c, err)
-// 		}
-// 	}
+		case "left":
+			img.crop = cropLeft
 
-// 	imgctx := p2.Context{
-// 		"src":  img.src,
-// 		"w":    img.w,
-// 		"h":    img.h,
-// 		"crop": img.crop,
-// 	}
+		default:
+			err = ctx.Error(
+				fmt.Sprintf("img: unrecognized crop argument: %s", vals[2].String()),
+				nil)
+			return
+		}
+	}
 
-// 	lo := s.l.find(c.path(), "img_tag")
-// 	err := lo.tpl.ExecuteWriter(imgctx, w)
-// 	if err != nil {
-// 		return ctx.Error(fmt.Sprintf("img: failed to write tag: %s", err), nil)
-// 	}
+	if haveWorH && img.h == 0 && img.w == 0 {
+		err = ctx.Error("img: image width or height must be greater than 0", nil)
+		return
+	}
 
-// 	return nil
-// }
+	return
+}
 
-// func imgTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
-// 	if args.Count() == 0 {
-// 		return nil, args.Error("img: an image path is required", nil)
-// 	}
+func (n imgSrcTagNode) Execute(
+	ctx *p2.ExecutionContext,
+	w p2.TemplateWriter) *p2.Error {
 
-// 	n := imgTagNode{}
+	s := ctx.Public[privSiteKey].(*site)
+	c := ctx.Public[contentKey].(*content)
+	currFile := n.contentRel(c)
 
-// 	src, err := args.ParseExpression()
-// 	if err != nil {
-// 		return nil, err
-// 	}
+	if parentRel, ok := ctx.Public[parentRelKey]; ok {
+		currFile = parentRel.(string)
+	}
 
-// 	n.src = src
+	img, perr := n.getImg(ctx)
+	if perr != nil {
+		return perr
+	}
 
-// 	for args.Remaining() > 0 {
-// 		t := args.MatchType(p2.TokenIdentifier)
-// 		if t == nil {
-// 			return nil, args.Error(
-// 				fmt.Sprintf("img: unexpected token: expected %s, got %d",
-// 					p2.TokenIdentifier,
-// 					args.Current().Typ),
-// 				t)
-// 		}
+	ic, err := s.findContent(currFile, img.src)
+	if err != nil {
+		s.errs.add(currFile, fmt.Errorf("img: file not found: %v", err))
+		return nil
+	}
 
-// 		var where *p2.IEvaluator
+	cgi, ok := ic.gen.(contentGenImg)
+	if !ok {
+		s.errs.add(currFile,
+			fmt.Errorf("img: %s is not an image, have %s",
+				img.src,
+				ic.gen.(contentGener).humanName()))
+		return nil
+	}
 
-// 		switch t.Val {
-// 		case "crop":
-// 			where = &n.crop
+	path, err := cgi.scale(img)
+	if err != nil {
+		s.errs.add(currFile, fmt.Errorf("img: failed to scale %s: %v", img.src, err))
+		return nil
+	}
 
-// 		case "height":
-// 			where = &n.h
+	_, err = w.WriteString(c.relDest(path))
+	if err != nil {
+		return ctx.Error(err.Error(), nil)
+	}
 
-// 		case "width":
-// 			where = &n.w
-// 		}
+	return nil
+}
 
-// 		if where == nil {
-// 			return nil, args.Error(
-// 				fmt.Sprintf("img: unrecognized option: %s", t.Val),
-// 				t)
-// 		}
+func (n imgTagNode) Execute(
+	ctx *p2.ExecutionContext,
+	w p2.TemplateWriter) *p2.Error {
 
-// 		arg := args.Match(p2.TokenSymbol, "=")
-// 		if arg == nil {
-// 			return nil, args.Error(
-// 				fmt.Sprintf("img: %s requires an argument", t.Val),
-// 				t)
-// 		}
+	s := ctx.Public[privSiteKey].(*site)
+	c := ctx.Public[contentKey].(*content)
 
-// 		opt, err := args.ParseExpression()
-// 		if err != nil {
-// 			return nil, err
-// 		}
+	img, perr := n.getImg(ctx)
+	if perr != nil {
+		return perr
+	}
 
-// 		*where = opt
-// 	}
+	imgctx := p2.Context{}
+	imgctx.Update(ctx.Public)
+	imgctx.Update(p2.Context{
+		parentRelKey: n.contentRel(c),
+		"src":        img.src,
+		"ext":        img.ext,
+		"w":          img.w,
+		"h":          img.h,
+		"crop":       img.crop,
+	})
 
-// 	return n, nil
-// }
+	lo := s.findLayout(c.cpath, "_img")
+	err := lo.execute(imgctx, w)
+	if err != nil {
+		return ctx.Error(fmt.Sprintf("img: failed to write tag: %s", err), nil)
+	}
+
+	return nil
+}
+
+func imgParseArgs(d *p2.Parser, s *p2.Token, args *p2.Parser) (base imgTagNodeBase, err *p2.Error) {
+	if args.Count() == 0 {
+		err = args.Error("img: an image path is required", nil)
+		return
+	}
+
+	src, err := args.ParseExpression()
+	if err != nil {
+		return
+	}
+
+	base.p2RelNode = p2RelFromToken(s)
+	base.src = src
+
+	for args.Remaining() > 0 {
+		t := args.MatchType(p2.TokenIdentifier)
+		if t == nil {
+			err = args.Error(
+				fmt.Sprintf("img: unexpected token: expected %s, got %d",
+					p2.TokenIdentifier,
+					args.Current().Typ),
+				t)
+			return
+		}
+
+		var where *p2.IEvaluator
+
+		switch t.Val {
+		case "ext":
+			where = &base.ext
+
+		case "crop":
+			where = &base.crop
+
+		case "height":
+			where = &base.h
+
+		case "width":
+			where = &base.w
+		}
+
+		if where == nil {
+			err = args.Error(
+				fmt.Sprintf("img: unrecognized option: %s", t.Val),
+				t)
+			return
+		}
+
+		arg := args.Match(p2.TokenSymbol, "=")
+		if arg == nil {
+			err = args.Error(
+				fmt.Sprintf("img: %s requires an argument", t.Val),
+				t)
+			return
+		}
+
+		*where, err = args.ParseExpression()
+		if err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+func imgSrcTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
+	base, err := imgParseArgs(d, s, args)
+	if err != nil {
+		return nil, err
+	}
+
+	return imgSrcTagNode{base}, nil
+}
+
+func imgTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
+	base, err := imgParseArgs(d, s, args)
+	if err != nil {
+		return nil, err
+	}
+
+	return imgTagNode{base}, nil
+}
