@@ -1,10 +1,6 @@
 package toner
 
-import (
-	"bytes"
-
-	p2 "github.com/flosch/pongo2"
-)
+import "bytes"
 
 type contentGener interface {
 	// Attempt to get a content generator from this guy, if it handles it.
@@ -27,7 +23,6 @@ type contentGenAssetBase struct {
 	assetDir string
 	ext      string
 	render   bool
-	min      Minifier
 }
 
 type contentGenPage struct {
@@ -110,18 +105,6 @@ func (gp contentGenPage) generatePage() (string, error) {
 		return dstPath, err
 	}
 
-	b := bytes.Buffer{}
-
-	err = c.templatize(&b)
-	if err != nil {
-		return "", err
-	}
-
-	rc, err := gp.rend.render(b.Bytes())
-	if err != nil {
-		return "", err
-	}
-
 	f, err := s.fCreate(dstPath)
 	if err != nil {
 		return "", err
@@ -130,8 +113,6 @@ func (gp contentGenPage) generatePage() (string, error) {
 	defer f.Close()
 
 	lo := s.findLayout(c.cpath, "_single")
-	c.tplContext["Content"] = p2.AsSafeValue(string(rc))
-
 	return dstPath, lo.execute(c.tplContext, f)
 }
 
@@ -151,7 +132,6 @@ func (gjs contentGenJS) getGenerator(c *content, ext string) interface{} {
 		assetDir:       "js",
 		ext:            ".js",
 		render:         cfg.RenderJS || b.rend.alwaysRender(),
-		min:            cfg.MinifyJS,
 	}}
 }
 
@@ -171,7 +151,6 @@ func (gcss contentGenCSS) getGenerator(c *content, ext string) interface{} {
 		assetDir:       "css",
 		ext:            ".css",
 		render:         cfg.RenderCSS || b.rend.alwaysRender(),
-		min:            cfg.MinifyCSS,
 	}}
 }
 
@@ -197,6 +176,7 @@ func (gab contentGenAssetBase) generatePage() (dstPath string, err error) {
 	b := bytes.Buffer{}
 
 	if c.meta.has() {
+		c.kickAssets = true
 		err = c.templatize(&b)
 	} else {
 		err = c.readAll(&b)
@@ -217,13 +197,6 @@ func (gab contentGenAssetBase) generatePage() (dstPath string, err error) {
 
 	if err != nil {
 		return
-	}
-
-	if gab.min != nil {
-		rc, err = gab.min.Minify(dstPath, rc)
-		if err != nil {
-			return
-		}
 	}
 
 	err = s.fWrite(dstPath, rc)

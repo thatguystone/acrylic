@@ -7,6 +7,6 @@ var (
 			`height:{{ h }}px;` +
 			`">`,
 		"_list":   "<not yet implemented>",
-		"_single": "{{ Content }}",
+		"_single": "{% content %}",
 	}
 )

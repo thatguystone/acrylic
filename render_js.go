@@ -10,7 +10,8 @@ type renderCoffee struct{ renderScript }
 type renderDart struct{ renderScript }
 type renderJS struct{ renderScript }
 
-func (renderScript) alwaysRender() bool { return false }
+func (renderScript) alwaysRender() bool     { return false }
+func (r renderScript) getBase() interface{} { return r }
 
 func (renderJS) renders(ext string) bool         { return ext == ".js" }
 func (renderJS) render(b []byte) ([]byte, error) { return b, nil }

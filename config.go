@@ -24,6 +24,28 @@ type Config struct {
 	SingleCSS  bool     // If all found css files should be combined. Only used if RenderCSS == true
 	MinifyCSS  Minifier // How to minify rendered CSS
 
+	// If your assets are sensitive to ordering (1 js file must be loaded
+	// before another), it's necessary to check that the unified asset files
+	// have assets in the correct order. If they're not sensitive to ordering,
+	// set this to True.
+	//
+	// It's possible to have irreconcilable asset ordering if you have
+	// something like the following:
+	//
+	//  page1:
+	//    {% js "one.js" %}
+	//    {% js "two.js" %}
+	//
+	//  page2:
+	//    {% js "two.js" %}
+	//    {% js "one.js" %}
+	//
+	// The inversion of include order here is impossible to maintain in a
+	// combined file. This option forces verification that everything is as it
+	// should be, or it causes the build to fail.
+	UnorderedJS  bool
+	UnorderedCSS bool
+
 	Jobs uint // How many jobs may be run in parallel. Defaults to GOMAXPROCS.
 }
 

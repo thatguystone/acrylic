@@ -1,8 +1,8 @@
 package toner
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 	"reflect"
 
 	p2 "github.com/flosch/pongo2"
@@ -15,13 +15,15 @@ const (
 )
 
 func init() {
+	p2.RegisterTag("content", contentTag)
+
 	p2.RegisterTag("js", jsTag)
 	p2.RegisterTag("css", cssTag)
 
 	p2.RegisterTag("js_all", jsAllTag)
 	p2.RegisterTag("css_all", cssAllTag)
 
-	// NEED TO PROVIDE LAYOUT relPath SO IT DOESN'T USE CONTENT'S; ALSO NEED FILTER `contentRel` TO GET PATHS SPECIFIED BY CONTENT (IE. HEADER IMG FOR BLOG POSTS)
+	// TODO(astone): NEED FILTER `contentRel` TO GET PATHS SPECIFIED BY CONTENT (IE. HEADER IMG FOR BLOG POSTS)
 	// p2.RegisterFilter("content_rel", contentRelFilt)
 }
 
@@ -29,19 +31,50 @@ type p2RelNode struct {
 	file string
 }
 
+type contentNode struct{}
+
 type assetTagNode struct {
 	p2RelNode
 	what    string
 	srcs    []p2.IEvaluator
 	genType reflect.Type
-	writer  func(c *content, path string, w p2.TemplateWriter) error
 }
 
 type jsAllNode struct{}
 type cssAllNode struct{}
 
-type tagWriter interface {
-	writeTag(path string, w io.Writer) error
+func (n contentNode) Execute(
+	ctx *p2.ExecutionContext,
+	w p2.TemplateWriter) *p2.Error {
+
+	s := ctx.Public[privSiteKey].(*site)
+	c := ctx.Public[contentKey].(*content)
+
+	c.kickAssets = true
+
+	b := bytes.Buffer{}
+	err := c.templatize(&b)
+	if err != nil {
+		s.errs.add(c.f.srcPath,
+			fmt.Errorf("content: failed to templatize: %v", err))
+		return nil
+	}
+
+	rc, err := c.gen.(contentGenPage).rend.render(b.Bytes())
+	if err != nil {
+		s.errs.add(c.f.srcPath,
+			fmt.Errorf("content: failed to render: %v", err))
+		return nil
+	}
+
+	_, err = w.Write(rc)
+	if err != nil {
+		s.errs.add(c.f.srcPath,
+			fmt.Errorf("content: failed to write: %v", err))
+		return nil
+	}
+
+	return nil
 }
 
 func (n assetTagNode) Execute(
@@ -78,7 +111,7 @@ func (n assetTagNode) Execute(
 		path, err = c.gen.(contentGener).generatePage()
 		if err == nil {
 			relPath := c.relDest(path)
-			err = n.writer(c, relPath, w)
+			err = s.assets.writeTag(pc, path, relPath, w)
 		}
 
 		if err != nil {
@@ -87,14 +120,6 @@ func (n assetTagNode) Execute(
 	}
 
 	return nil
-}
-
-func jsTagWriter(c *content, path string, w p2.TemplateWriter) error {
-	return c.gen.(contentGenJS).rend.(tagWriter).writeTag(path, w)
-}
-
-func cssTagWriter(c *content, path string, w p2.TemplateWriter) error {
-	return c.gen.(contentGenCSS).rend.(tagWriter).writeTag(path, w)
 }
 
 func (n jsAllNode) Execute(
@@ -130,6 +155,14 @@ func tagParseExpressions(
 	return exps, nil
 }
 
+func contentTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
+	if args.Count() > 0 {
+		return nil, args.Error("content: no arguments expected", nil)
+	}
+
+	return contentNode{}, nil
+}
+
 func assetTag(what string, d *p2.Parser, s *p2.Token, args *p2.Parser) (
 	assetTagNode,
 	*p2.Error) {
@@ -161,7 +194,6 @@ func jsTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) 
 	}
 
 	n.genType = reflect.TypeOf(contentGenJS{})
-	n.writer = jsTagWriter
 
 	return n, nil
 }
@@ -173,7 +205,6 @@ func cssTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error)
 	}
 
 	n.genType = reflect.TypeOf(contentGenCSS{})
-	n.writer = cssTagWriter
 
 	return n, nil
 }

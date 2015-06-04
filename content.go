@@ -28,6 +28,13 @@ type content struct {
 	meta       *meta
 	tplContext p2.Context
 	gen        interface{}
+
+	// Assets need to be ordered how they appear on the page, unless otherwise
+	// noted. This flag sets when it's time to start rearranging assets. See
+	// Config.OrderedAssets for more details.
+	kickAssets bool
+	orderedJS  []string
+	orderedCSS []string
 }
 
 const (
@@ -41,6 +48,7 @@ var (
 	metaDelim = []byte("---\n")
 
 	bannedContentTags = []string{
+		"content",
 		"css_all",
 		"extends",
 		"js_all",

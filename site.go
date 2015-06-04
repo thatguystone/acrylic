@@ -13,12 +13,13 @@ import (
 )
 
 type site struct {
-	cfg *Config
-	min *minify.Minify
-	mtx sync.Mutex
-	cs  contents
-	d   data
-	l   map[string]*layout
+	cfg    *Config
+	min    *minify.Minify
+	mtx    sync.Mutex
+	cs     contents
+	d      data
+	l      map[string]*layout
+	assets assets
 
 	wg        sync.WaitGroup
 	contentCh chan file
@@ -48,6 +49,7 @@ func newSite(cfg *Config) *site {
 	}
 
 	s.cs.init(s)
+	s.assets.init(s)
 	s.min.AddFunc("text/html", minhtml.Minify)
 
 	return s
@@ -71,6 +73,10 @@ func (s *site) build() (BuildStats, []Error) {
 
 	if !s.errs.has() {
 		s.generate()
+	}
+
+	if !s.errs.has() {
+		s.assets.crunch()
 	}
 
 	return s.stats, s.errs.s
