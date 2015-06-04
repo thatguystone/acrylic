@@ -130,7 +130,10 @@ func tagParseExpressions(
 	return exps, nil
 }
 
-func assetTag(what string, d *p2.Parser, s *p2.Token, args *p2.Parser) (assetTagNode, *p2.Error) {
+func assetTag(what string, d *p2.Parser, s *p2.Token, args *p2.Parser) (
+	assetTagNode,
+	*p2.Error) {
+
 	srcs, err := tagParseExpressions(d, s, args)
 	if err != nil {
 		return assetTagNode{}, err

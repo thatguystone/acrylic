@@ -150,7 +150,7 @@ func (gjs contentGenJS) getGenerator(c *content, ext string) interface{} {
 		contentGenBase: b,
 		assetDir:       "js",
 		ext:            ".js",
-		render:         cfg.RenderJS,
+		render:         cfg.RenderJS || b.rend.alwaysRender(),
 		min:            cfg.MinifyJS,
 	}}
 }
@@ -170,7 +170,7 @@ func (gcss contentGenCSS) getGenerator(c *content, ext string) interface{} {
 		contentGenBase: b,
 		assetDir:       "css",
 		ext:            ".css",
-		render:         cfg.RenderCSS,
+		render:         cfg.RenderCSS || b.rend.alwaysRender(),
 		min:            cfg.MinifyCSS,
 	}}
 }
@@ -207,8 +207,12 @@ func (gab contentGenAssetBase) generatePage() (dstPath string, err error) {
 	}
 
 	rc := b.Bytes()
-	if gab.render || gab.rend.alwaysRender() {
+	if gab.render {
 		rc, err = gab.rend.render(rc)
+	} else {
+		if !fDestChanged(c.f.srcPath, dstPath) {
+			return
+		}
 	}
 
 	if err != nil {

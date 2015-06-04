@@ -2,6 +2,7 @@ package toner
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	p2 "github.com/flosch/pongo2"
@@ -94,10 +95,11 @@ func (n imgTagNodeBase) getImg(ctx *p2.ExecutionContext) (img img, err *p2.Error
 		}
 
 		img.ext = ext
+	} else {
+		img.ext = filepath.Ext(img.src)
 	}
 
 	i++
-	haveWorH := false
 	if vals[i] != nil {
 		if !vals[i].IsInteger() {
 			err = ctx.Error("img: width must be an integer", nil)
@@ -110,8 +112,7 @@ func (n imgTagNodeBase) getImg(ctx *p2.ExecutionContext) (img img, err *p2.Error
 			return
 		}
 
-		haveWorH = true
-		img.w = uint(w)
+		img.w = w
 	}
 
 	i++
@@ -127,8 +128,7 @@ func (n imgTagNodeBase) getImg(ctx *p2.ExecutionContext) (img img, err *p2.Error
 			return
 		}
 
-		haveWorH = true
-		img.h = uint(h)
+		img.h = h
 	}
 
 	i++
@@ -139,7 +139,10 @@ func (n imgTagNodeBase) getImg(ctx *p2.ExecutionContext) (img img, err *p2.Error
 		}
 
 		switch vals[i].String() {
-		case "centered":
+		case "none":
+			img.crop = cropNone
+
+		case "centered", "center":
 			img.crop = cropCentered
 
 		case "left":
@@ -151,11 +154,6 @@ func (n imgTagNodeBase) getImg(ctx *p2.ExecutionContext) (img img, err *p2.Error
 				nil)
 			return
 		}
-	}
-
-	if haveWorH && img.h == 0 && img.w == 0 {
-		err = ctx.Error("img: image width or height must be greater than 0", nil)
-		return
 	}
 
 	return
@@ -193,11 +191,16 @@ func (n imgSrcTagNode) Execute(
 		return nil
 	}
 
-	path, err := cgi.scale(img)
+	imgW, imgH, path, err := cgi.scale(img)
 	if err != nil {
 		s.errs.add(currFile, fmt.Errorf("img: failed to scale %s: %v", img.src, err))
 		return nil
 	}
+
+	ctx.Public["w"] = imgW
+	ctx.Public["h"] = imgH
+
+	// have scale return updated dims and set those in ctx.Public
 
 	_, err = w.WriteString(c.relDest(path))
 	if err != nil {
@@ -227,7 +230,7 @@ func (n imgTagNode) Execute(
 		"ext":        img.ext,
 		"w":          img.w,
 		"h":          img.h,
-		"crop":       img.crop,
+		"crop":       img.crop.String(),
 	})
 
 	lo := s.findLayout(c.cpath, "_img")

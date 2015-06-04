@@ -19,7 +19,15 @@ func TestP2Img(t *testing.T) {
 
 	testP2Exec(t,
 		`{% img "path.gif" %}`,
-		`<img src=../static/img/tpl/path.gif>`,
+		`<img src=../static/img/tpl/path.gif style=width:1px;height:1px;>`,
+		testFile{
+			p:  "content/tpl/path.gif",
+			bc: gifBin,
+		})
+
+	testP2Exec(t,
+		`{% img "path.gif" width=200 height=100 crop="left" %}`,
+		`<img src=../static/img/tpl/path.200x100.cl.gif style=width:200px;height:100px;>`,
 		testFile{
 			p:  "content/tpl/path.gif",
 			bc: gifBin,

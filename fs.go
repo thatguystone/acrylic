@@ -10,14 +10,17 @@ import (
 const createFlags = os.O_RDWR | os.O_CREATE | os.O_TRUNC
 
 func fCreate(path string, flag int, perm os.FileMode) (*os.File, error) {
-	dir, _ := filepath.Split(path)
-
-	err := os.MkdirAll(dir, 0750)
+	err := fCreateParents(path)
 	if err != nil {
 		return nil, err
 	}
 
 	return os.OpenFile(path, flag, perm)
+}
+
+func fCreateParents(path string) error {
+	dir, _ := filepath.Split(path)
+	return os.MkdirAll(dir, 0750)
 }
 
 func fWrite(path string, c []byte, perm os.FileMode) error {
@@ -103,4 +106,14 @@ func fDropRoot(root, path string) string {
 	}
 
 	return path
+}
+
+func fDestChanged(src, dst string) bool {
+	sstat, serr := os.Stat(src)
+	dstat, derr := os.Stat(dst)
+	if serr != nil || derr != nil {
+		return true
+	}
+
+	return !dstat.ModTime().Equal(sstat.ModTime())
 }
