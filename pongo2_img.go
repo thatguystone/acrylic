@@ -200,8 +200,6 @@ func (n imgSrcTagNode) Execute(
 	ctx.Public["w"] = imgW
 	ctx.Public["h"] = imgH
 
-	// have scale return updated dims and set those in ctx.Public
-
 	_, err = w.WriteString(c.relDest(path))
 	if err != nil {
 		return ctx.Error(err.Error(), nil)

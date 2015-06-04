@@ -257,8 +257,6 @@ func TestSiteAssetCombining(t *testing.T) {
 	tt.notExists("public/static/js/layout/blog/layout2.css")
 
 	fc := tt.readFile("public/static/all.js")
-	t.Logf("%s", fc)
-
 	tt.a.Equal(1, strings.Count(fc, "(layout js!)"), "js should only appear once")
 	tt.a.Equal(1, strings.Count(fc, "(layout 2 js!)"), "js should only appear once")
 	tt.a.Equal(1, strings.Count(fc, "(post 1 js stuff!)"), "js should only appear once")
@@ -308,4 +306,8 @@ func TestSiteAssetsOutOfOrder(t *testing.T) {
 
 	es := errs.String()
 	tt.a.True(strings.Contains(es, "asset ordering inconsistent"), "wrong error string: %s", es)
+}
+
+func TestSiteAssetMinify(t *testing.T) {
+	t.Parallel()
 }
