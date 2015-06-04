@@ -22,3 +22,4 @@ Tags:
 Notes:
 
 * Content exists independent of extension: `test.html` and `test.png` are the same.
+* meta `layoutName` to change which layout is used for the page

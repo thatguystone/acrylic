@@ -12,6 +12,15 @@ func (m *meta) has() bool {
 	return len(*m) > 0
 }
 
+func (m meta) layoutName() string {
+	name, ok := m["layoutName"].(string)
+	if !ok {
+		return ""
+	}
+
+	return name
+}
+
 func (m meta) publish() bool {
 	b, ok := m["publish"].(bool)
 	if !ok {

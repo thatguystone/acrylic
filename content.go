@@ -62,6 +62,10 @@ func (cs *contents) init(s *site) {
 }
 
 func (cs *contents) add(f file) error {
+	if f.layoutName == "" {
+		f.layoutName = "_single"
+	}
+
 	ext := filepath.Ext(f.srcPath)
 	cpath := fChangeExt(f.dstPath, "")
 	f.dstPath = filepath.Join(cs.s.cfg.Root, cs.s.cfg.PublicDir, f.dstPath)
@@ -148,6 +152,10 @@ func (c *content) load() error {
 		}
 	}
 
+	if c.f.isImplicit {
+		return nil
+	}
+
 	f, err := os.Open(c.f.srcPath)
 	if err != nil {
 		return err
@@ -193,7 +201,22 @@ func (c *content) load() error {
 	}
 
 	c.metaEnd = mb.Len()
-	return c.processMeta(mb.Bytes(), false)
+	err = c.processMeta(mb.Bytes(), false)
+	if err != nil {
+		return err
+	}
+
+	lname := c.meta.layoutName()
+	if lname != "" {
+		lo := c.cs.s.findLayout(c.cpath, lname, false)
+		if lo == nil {
+			return fmt.Errorf("layout `%s` not found", lname)
+		}
+
+		c.f.layoutName = lname
+	}
+
+	return nil
 }
 
 func (c *content) processMeta(m []byte, isMetaFile bool) error {
@@ -254,6 +277,10 @@ func (c *content) claimOtherDest(dst, ext string) (string, bool, error) {
 }
 
 func (c *content) templatize(w io.Writer) error {
+	if c.f.isImplicit {
+		return nil
+	}
+
 	b, err := ioutil.ReadFile(c.f.srcPath)
 	if err != nil {
 		return err
@@ -275,6 +302,10 @@ func (c *content) templatize(w io.Writer) error {
 }
 
 func (c *content) readAll(w io.Writer) error {
+	if c.f.isImplicit {
+		return nil
+	}
+
 	f, err := os.Open(c.f.srcPath)
 	if err != nil {
 		return err

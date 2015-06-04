@@ -64,6 +64,9 @@ func (gi contentGenImg) getGenerator(c *content, ext string) interface{} {
 func (gi contentGenImg) generatePage() (string, error) {
 	// c := gi.c
 	// s := c.cs.s
+
+	// TODO(astone): generate image pages
+
 	return "", nil
 }
 

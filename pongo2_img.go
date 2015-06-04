@@ -231,7 +231,7 @@ func (n imgTagNode) Execute(
 		"crop":       img.crop.String(),
 	})
 
-	lo := s.findLayout(c.cpath, "_img")
+	lo := s.findLayout(c.cpath, "_img", true)
 	err := lo.execute(imgctx, w)
 	if err != nil {
 		return ctx.Error(fmt.Sprintf("img: failed to write tag: %s", err), nil)

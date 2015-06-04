@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	p2 "github.com/flosch/pongo2"
@@ -74,6 +75,8 @@ func (s *site) build() (BuildStats, Errors) {
 	if !s.errs.has() {
 		s.generate()
 	}
+
+	// TODO(astone): check for orphaned content
 
 	if !s.errs.has() {
 		s.assets.crunch()
@@ -201,35 +204,42 @@ func (s *site) loadLayouts() {
 }
 
 func (s *site) loadLayoutDir(dir string, isTheme bool, depth int) {
-	err := s.walkRoot(dir, func(f file) error {
-		if filepath.Ext(f.srcPath) != ".html" {
-			pubDir := themePubDir
-			if !isTheme {
-				pubDir = layoutPubDir
+	dstPath := func(src string) string {
+		pubDir := themePubDir
+		if !isTheme {
+			pubDir = layoutPubDir
+		}
+
+		p := fDropFirst(fDropRoot(s.cfg.Root, src))
+		return filepath.Join(pubDir, p)
+	}
+
+	err := s.walkRoot(dir,
+		func(f file) error {
+			if filepath.Ext(f.srcPath) != ".html" {
+				f.dstPath = dstPath(f.srcPath)
+				s.addContent(f, false)
+				return nil
 			}
 
-			p := fDropFirst(fDropRoot(s.cfg.Root, f.srcPath))
-			f.dstPath = filepath.Join(pubDir, p)
+			path := fDropRoot(s.cfg.Root, f.srcPath)
+			for depth > 0 {
+				path = fDropFirst(path)
+				depth--
+			}
 
-			s.addContent(f, false)
+			which := fChangeExt(path, "")
+			s.l[which] = &layout{
+				s:        s,
+				which:    which,
+				filePath: f.srcPath,
+			}
+
 			return nil
-		}
-
-		path := fDropRoot(s.cfg.Root, f.srcPath)
-		for depth > 0 {
-			path = fDropFirst(path)
-			depth--
-		}
-
-		which := fChangeExt(path, "")
-		s.l[which] = &layout{
-			s:        s,
-			which:    which,
-			filePath: f.srcPath,
-		}
-
-		return nil
-	})
+		},
+		func(dir string, indexes []file) error {
+			return s.checkDirIndexes(false, dir, dstPath, indexes)
+		})
 
 	if err != nil {
 		s.errs.add(dir, err)
@@ -237,25 +247,57 @@ func (s *site) loadLayoutDir(dir string, isTheme bool, depth int) {
 }
 
 func (s *site) loadContent() {
-	err := s.walkRoot(s.cfg.ContentDir, func(f file) error {
-		if f.isMeta() {
+	dstPath := func(src string) string {
+		path := fDropRoot(s.cfg.Root, src)
+		return fDropFirst(path)
+	}
+
+	err := s.walkRoot(s.cfg.ContentDir,
+		func(f file) error {
+			f.dstPath = dstPath(f.srcPath)
+			s.addContent(f, true)
 			return nil
-		}
-
-		path := fDropRoot(s.cfg.Root, f.srcPath)
-		path = fDropFirst(path)
-		f.dstPath = path
-		s.addContent(f, true)
-
-		return nil
-	})
+		},
+		func(dir string, indexes []file) error {
+			return s.checkDirIndexes(true, dir, dstPath, indexes)
+		})
 
 	if err != nil {
 		s.errs.add(s.cfg.ContentDir, err)
 	}
 }
 
+func (s *site) checkDirIndexes(
+	isContent bool,
+	dir string,
+	dstPath func(string) string,
+	indexes []file) error {
+
+	if len(indexes) == 0 {
+		indexes = append(indexes, file{
+			srcPath:    filepath.Join(dir, "index.html"),
+			isImplicit: true,
+		})
+	}
+
+	root := filepath.Join(s.cfg.Root, s.cfg.ContentDir)
+
+	for _, f := range indexes {
+		f.layoutName = "_list"
+
+		if dir == root {
+			f.layoutName = "_index"
+		}
+
+		f.dstPath = dstPath(f.srcPath)
+		s.addContent(f, isContent)
+
+	}
+	return nil
+}
+
 func (s *site) loadData() {
+	// TODO(astone): load data
 	return
 }
 
@@ -291,15 +333,19 @@ func (s *site) generate() {
 	wg.Wait()
 }
 
-func (s *site) walkRoot(p string, cb func(file) error) error {
+func (s *site) walkRoot(
+	p string,
+	fCb func(file) error,
+	indexesCb func(string, []file) error) error {
+
 	p = filepath.Join(s.cfg.Root, p)
 
 	if !dExists(p) {
 		return nil
 	}
 
-	var walk func(string, func(file) error) error
-	walk = func(p string, cb func(file) error) error {
+	var walk func(string) error
+	walk = func(p string) error {
 		f, err := os.Open(p)
 		if err != nil {
 			return err
@@ -311,16 +357,28 @@ func (s *site) walkRoot(p string, cb func(file) error) error {
 			return err
 		}
 
+		var indexes []file
+
 		for _, info := range infos {
 			p := filepath.Join(p, info.Name())
 
 			if info.IsDir() {
-				err = walk(p, cb)
+				err = walk(p)
 			} else {
-				err = cb(file{
+				f := file{
 					srcPath: p,
-					info:    info,
-				})
+				}
+
+				if f.isMeta() {
+					return nil
+				}
+
+				if f.isIndex() {
+					indexes = append(indexes, f)
+					return nil
+				}
+
+				err = fCb(f)
 			}
 
 			if err != nil {
@@ -328,10 +386,10 @@ func (s *site) walkRoot(p string, cb func(file) error) error {
 			}
 		}
 
-		return nil
+		return indexesCb(p, indexes)
 	}
 
-	return walk(p, cb)
+	return walk(p)
 }
 
 func (s *site) isLayout(path string) bool {
@@ -340,7 +398,7 @@ func (s *site) isLayout(path string) bool {
 	return ok
 }
 
-func (s *site) findLayout(cpath, which string) *layout {
+func (s *site) findLayout(cpath, which string, failIfNotFound bool) *layout {
 	for cpath != "." {
 		lo := s.l[filepath.Join(cpath, which)]
 		if lo != nil {
@@ -350,9 +408,17 @@ func (s *site) findLayout(cpath, which string) *layout {
 		cpath = filepath.Dir(cpath)
 	}
 
+	if strings.HasPrefix(which, "/") {
+		which = which[1:]
+	}
+
 	lo := s.l[which]
 	if lo != nil {
 		return lo
+	}
+
+	if !failIfNotFound {
+		return nil
 	}
 
 	// If the template doesn't exist, that's programmer error
@@ -373,7 +439,8 @@ func (s *site) fWrite(path string, c []byte) error {
 
 func (s *site) Resolve(tpl *p2.Template, path string) string {
 	if s.isLayout(path) {
-		return s.findLayout(filepath.Split(path)).filePath
+		dir, which := filepath.Split(path)
+		return s.findLayout(dir, which, true).filePath
 	}
 
 	if filepath.IsAbs(path) {

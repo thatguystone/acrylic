@@ -112,7 +112,7 @@ func (gp contentGenPage) generatePage() (string, error) {
 
 	defer f.Close()
 
-	lo := s.findLayout(c.cpath, "_single")
+	lo := s.findLayout(c.cpath, c.f.layoutName, true)
 	return dstPath, lo.execute(c.tplContext, f)
 }
 

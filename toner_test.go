@@ -227,6 +227,9 @@ func TestBasicSite(t *testing.T) {
 	tt.exists("public/static/css/blog/post1.css")
 	tt.exists("public/static/css/blog/post2.css")
 
+	tt.checkFile("public/index.html", defaultLayouts["_index"])
+	tt.checkFile("public/blog/empty/index.html", defaultLayouts["_list"])
+
 	tt.checkFile("public/blog/post1.html",
 		`<script src=../../static/js/layout/blog/layout.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout.css>Blog layout:<h1>post 1</h1><p>post 1<script src=../static/js/blog/post1.js></script><link rel=stylesheet href=../static/css/blog/post1.css></p><img src=../static/img/layout/blog/img.png style=width:1px;height:1px;><script src=../../static/js/layout/blog/layout2.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout2.css>`)
 	tt.checkFile("public/blog/post2.html",
@@ -236,6 +239,28 @@ func TestBasicSite(t *testing.T) {
 		`(layout 2 js!)`)
 	tt.checkFile("public/static/css/layout/blog/layout2.css",
 		`(layout 2 css!)`)
+}
+
+func TestSiteLayoutChanging(t *testing.T) {
+	t.Parallel()
+
+	content := "CRAZY COOL LAYOUT"
+
+	tt := testNew(t, true, nil,
+		testFile{
+			p: "content/post.md",
+			sc: "---\nlayoutName: /some/path/test\n---\n" +
+				"this content shouldn't be displayed",
+		},
+		testFile{
+			p:  "layouts/some/path/test.html",
+			sc: content,
+		},
+	)
+
+	defer tt.cleanup()
+
+	tt.checkFile("public/post.html", content)
 }
 
 func TestSiteAssetCombining(t *testing.T) {
