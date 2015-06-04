@@ -126,6 +126,8 @@ func (gi contentGenImg) scale(img img) (w, h int, dstPath string, err error) {
 		return
 	}
 
+	c.cs.s.stats.addImg()
+
 	f, err := os.Open(c.f.srcPath)
 	if err != nil {
 		return

@@ -84,7 +84,7 @@ func fRelPath(rel, path string) string {
 
 func fPathCheckFor(in string, any ...string) string {
 	for _, a := range any {
-		found := strings.HasPrefix(in, filepath.Clean(a+"/")) ||
+		found := strings.HasPrefix(in, filepath.Clean(a)+"/") ||
 			strings.HasSuffix(in, filepath.Clean("/"+a)) ||
 			strings.Contains(in, filepath.Clean("/"+a)+"/")
 

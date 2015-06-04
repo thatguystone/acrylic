@@ -241,6 +241,32 @@ func TestBasicSite(t *testing.T) {
 		`(layout 2 css!)`)
 }
 
+func TestBuildStats(t *testing.T) {
+	t.Parallel()
+
+	pages := append([]testFile{}, basicSite...)
+	tt := testNew(t, false, nil, append(pages,
+		testFile{
+			p:  "content/img_page.html",
+			sc: `{% img "path.gif" %}`,
+		},
+		testFile{
+			p:  "content/path.gif",
+			bc: gifBin,
+		},
+	)...)
+	defer tt.cleanup()
+
+	stats, errs := tt.Build()
+	tt.a.MustEqual(0, len(errs), "failed to build site; errs=%v", errs)
+
+	tt.a.True(stats.Duration > 0, "duration wasn't set properly: %d == 0", stats.Duration)
+	tt.a.True(stats.Pages > 0, "pages wasn't set properly: %d == 0", stats.Pages)
+	tt.a.True(stats.JS > 0, "js wasn't set properly: %d == 0", stats.JS)
+	tt.a.True(stats.CSS > 0, "css wasn't set properly: %d == 0", stats.CSS)
+	tt.a.True(stats.Imgs > 0, "imgs wasn't set properly: %d == 0", stats.Imgs)
+}
+
 func TestSiteLayoutChanging(t *testing.T) {
 	t.Parallel()
 

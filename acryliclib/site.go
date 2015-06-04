@@ -44,6 +44,7 @@ var (
 
 // TODO(astone): sitemap.xml
 // TODO(astone): rss feeds
+// TODO(astone): code highlighting
 
 func newSite(cfg *Config) *site {
 	s := &site{

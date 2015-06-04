@@ -100,6 +100,8 @@ func (gp contentGenPage) generatePage() (string, error) {
 	c := gp.c
 	s := c.cs.s
 
+	s.stats.addPage()
+
 	dstPath, alreadyClaimed, err := c.claimDest(".html")
 	if alreadyClaimed || err != nil {
 		return dstPath, err
@@ -139,6 +141,11 @@ func (contentGenJS) humanName() string {
 	return "js"
 }
 
+func (gjs contentGenJS) generatePage() (string, error) {
+	gjs.c.cs.s.stats.addJS()
+	return gjs.contentGenAssetBase.generatePage()
+}
+
 func (gcss contentGenCSS) getGenerator(c *content, ext string) interface{} {
 	b, ok := gcss.findRenderer(c, contentCSSRends, ext)
 	if !ok {
@@ -156,6 +163,11 @@ func (gcss contentGenCSS) getGenerator(c *content, ext string) interface{} {
 
 func (contentGenCSS) humanName() string {
 	return "css"
+}
+
+func (gcss contentGenCSS) generatePage() (string, error) {
+	gcss.c.cs.s.stats.addCSS()
+	return gcss.contentGenAssetBase.generatePage()
 }
 
 func (gab contentGenAssetBase) generatePage() (dstPath string, err error) {
@@ -211,6 +223,7 @@ func (contentGenPassthru) getGenerator(c *content, ext string) interface{} {
 }
 
 func (gpt contentGenPassthru) generatePage() (string, error) {
+	gpt.c.cs.s.stats.addBlob()
 	return "", nil
 }
 
