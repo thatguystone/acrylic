@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-// Acrylic represents a single site
-type Acrylic struct {
-	cfg Config
-}
-
 // BuildStats contains interesting information about a single build of the
 // site.
 type BuildStats struct {
@@ -21,18 +16,12 @@ type BuildStats struct {
 	Blobs    uint32
 }
 
-func New(cfg Config) *Acrylic {
+// Build builds the site specified by cfg
+func Build(cfg Config) (BuildStats, Errors) {
 	cfg.setDefaults()
 
-	return &Acrylic{
-		cfg: cfg,
-	}
-}
-
-// Build builds the current site
-func (t *Acrylic) Build() (BuildStats, Errors) {
 	startTime := time.Now()
-	s, errs := newSite(&t.cfg).build()
+	s, errs := newSite(&cfg).build()
 	s.setRunTime(time.Now().Sub(startTime))
 
 	return s, errs

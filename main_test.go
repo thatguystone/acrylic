@@ -1,4 +1,4 @@
-package acrylic
+package main
 
 import "testing"
 
