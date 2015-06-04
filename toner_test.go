@@ -270,3 +270,42 @@ func TestSiteAssetCombining(t *testing.T) {
 	tt.a.True(lojs < pjs, "layout js should be before post js: %d < %d", lojs, pjs)
 	tt.a.True(pjs < lo2js, "post js2 should be before layout js2: %d < %d", pjs, lo2js)
 }
+
+func TestSiteAssetsOutOfOrder(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.RenderJS = true
+	cfg.SingleJS = true
+	cfg.RenderCSS = true
+	cfg.SingleCSS = true
+
+	tt := testNew(t, false, cfg,
+		testFile{
+			p: "content/blog/post1.md",
+			sc: "# post 1\n" +
+				"{% js \"post1.js\" %}\n" +
+				"{% js \"post2.js\" %}\n",
+		},
+		testFile{
+			p: "content/blog/post2.md",
+			sc: "# post 2\n" +
+				"{% js \"post2.js\" %}\n" +
+				"{% js \"post1.js\" %}\n",
+		},
+		testFile{
+			p:  "content/blog/post1.js",
+			sc: "(post 1 js)",
+		},
+		testFile{
+			p:  "content/blog/post2.js",
+			sc: "(post 2 js)",
+		})
+	defer tt.cleanup()
+
+	_, errs := tt.Build()
+	tt.a.NotEqual(0, len(errs))
+
+	es := errs.String()
+	tt.a.True(strings.Contains(es, "asset ordering inconsistent"), "wrong error string: %s", es)
+}

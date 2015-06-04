@@ -55,7 +55,7 @@ func newSite(cfg *Config) *site {
 	return s
 }
 
-func (s *site) build() (BuildStats, []Error) {
+func (s *site) build() (BuildStats, Errors) {
 	s.loadData()
 
 	if !s.errs.has() {

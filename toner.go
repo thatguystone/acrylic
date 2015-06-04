@@ -19,6 +19,6 @@ func New(cfg Config) *Toner {
 }
 
 // Build builds the current site
-func (t *Toner) Build() (BuildStats, []Error) {
+func (t *Toner) Build() (BuildStats, Errors) {
 	return newSite(&t.cfg).build()
 }

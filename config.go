@@ -43,6 +43,8 @@ type Config struct {
 	// The inversion of include order here is impossible to maintain in a
 	// combined file. This option forces verification that everything is as it
 	// should be, or it causes the build to fail.
+	//
+	// This check is only run when SingleJS/CSS == true.
 	UnorderedJS  bool
 	UnorderedCSS bool
 

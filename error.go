@@ -3,9 +3,13 @@ package toner
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 )
+
+// Errors is a slice of all errors that occurred while processing
+type Errors []Error
 
 // Error contains user errors that occurred while processing the given content
 type Error struct {
@@ -41,18 +45,34 @@ func (e *errs) add(path string, err error) {
 	e.s[at].Errs = append(e.s[at].Errs, err)
 }
 
-func (e Error) String() string {
-	if len(e.Errs) == 0 {
+func (es Errors) String() string {
+	if len(es) == 0 {
 		return ""
 	}
 
 	b := bytes.Buffer{}
 
-	fmt.Fprintf(&b, "from: %s\n", e.Path)
-
-	for _, err := range e.Errs {
-		fmt.Fprintf(&b, "\t%v\n", err)
+	for _, e := range es {
+		e.dump(&b)
 	}
 
 	return b.String()
+}
+
+func (e Error) String() string {
+	b := bytes.Buffer{}
+	e.dump(&b)
+	return b.String()
+}
+
+func (e Error) dump(w io.Writer) {
+	if len(e.Errs) == 0 {
+		return
+	}
+
+	fmt.Fprintf(w, "from: %s\n", e.Path)
+
+	for _, err := range e.Errs {
+		fmt.Fprintf(w, "\t%v\n", err)
+	}
 }

@@ -63,17 +63,19 @@ var (
 func (a *assets) init(s *site) {
 	a.s = s
 
+	singleJS := s.cfg.RenderJS && s.cfg.SingleJS
 	a.js.init(s, "js",
-		s.cfg.RenderJS && s.cfg.SingleJS,
+		singleJS,
 		s.cfg.RenderJS && s.cfg.MinifyJS != nil,
 		s.cfg.MinifyJS,
-		!s.cfg.UnorderedJS)
+		singleJS && !s.cfg.UnorderedJS)
 
+	singleCSS := s.cfg.RenderCSS && s.cfg.SingleCSS
 	a.css.init(s, "css",
-		s.cfg.RenderCSS && s.cfg.SingleCSS,
+		singleCSS,
 		s.cfg.RenderCSS && s.cfg.MinifyCSS != nil,
 		s.cfg.MinifyCSS,
-		!s.cfg.UnorderedCSS)
+		singleCSS && !s.cfg.UnorderedCSS)
 }
 
 func (a *assets) writeTag(c *content, dstPath, relPath string, w io.Writer) (err error) {
@@ -137,7 +139,7 @@ func (a *assets) verifyOrdering() bool {
 
 		if !ok {
 			a.s.errs.add(c.f.srcPath,
-				fmt.Errorf("assert ordering inconsistent at %s. "+
+				fmt.Errorf("asset ordering inconsistent with %s. "+
 					"You probably ordered the assets differently in another file.",
 					failedAt))
 			return false
