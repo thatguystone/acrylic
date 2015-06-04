@@ -1,4 +1,4 @@
-package toner
+package acryliclib
 
 import (
 	"errors"
@@ -41,6 +41,9 @@ var (
 		staticPubDir,
 	}
 )
+
+// TODO(astone): sitemap.xml
+// TODO(astone): rss feeds
 
 func newSite(cfg *Config) *site {
 	s := &site{
@@ -159,7 +162,7 @@ func (s *site) loadLayouts() {
 
 	s.loadLayoutDir(s.cfg.LayoutsDir, false, 1)
 
-	set := p2.NewSet("toner")
+	set := p2.NewSet("acrylic")
 	set.Resolver = s
 
 	wg := sync.WaitGroup{}

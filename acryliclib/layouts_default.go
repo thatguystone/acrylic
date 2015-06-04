@@ -1,4 +1,4 @@
-package toner
+package acryliclib
 
 var (
 	defaultLayouts = map[string]string{

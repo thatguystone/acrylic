@@ -1,4 +1,4 @@
-package toner
+package acryliclib
 
 type SiteCtx struct{}
 

@@ -1,4 +1,4 @@
-package toner
+package acryliclib
 
 import (
 	"fmt"
@@ -47,6 +47,8 @@ type asseter interface {
 const (
 	combinedName = "all"
 )
+
+// TODO(astone): asset trailers for less/coffee/etc
 
 var (
 	asseters = []asseter{

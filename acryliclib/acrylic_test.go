@@ -1,4 +1,4 @@
-package toner
+package acryliclib
 
 import (
 	"io/ioutil"
@@ -10,8 +10,8 @@ import (
 	"github.com/thatguystone/assert"
 )
 
-type testToner struct {
-	*Toner
+type testAcrylic struct {
+	*Acrylic
 	a assert.A
 }
 
@@ -130,14 +130,14 @@ func testConfig() *Config {
 	}
 }
 
-func testNew(t *testing.T, build bool, cfg *Config, files ...testFile) *testToner {
+func testNew(t *testing.T, build bool, cfg *Config, files ...testFile) *testAcrylic {
 	if cfg == nil {
 		cfg = testConfig()
 	}
 
-	tt := &testToner{
-		Toner: New(*cfg),
-		a:     assert.From(t),
+	tt := &testAcrylic{
+		Acrylic: New(*cfg),
+		a:       assert.From(t),
 	}
 
 	tt.createFiles(files)
@@ -150,7 +150,7 @@ func testNew(t *testing.T, build bool, cfg *Config, files ...testFile) *testTone
 	return tt
 }
 
-func (tt *testToner) createFiles(files []testFile) {
+func (tt *testAcrylic) createFiles(files []testFile) {
 	for _, file := range files {
 		p := filepath.Join(tt.cfg.Root, file.p)
 
@@ -175,24 +175,24 @@ func (tt *testToner) createFiles(files []testFile) {
 	}
 }
 
-func (tt *testToner) exists(path string) {
+func (tt *testAcrylic) exists(path string) {
 	p := filepath.Join(tt.cfg.Root, path)
 	_, err := os.Stat(p)
 	tt.a.True(err == nil, "file %s does not exist", p)
 }
 
-func (tt *testToner) notExists(path string) {
+func (tt *testAcrylic) notExists(path string) {
 	p := filepath.Join(tt.cfg.Root, path)
 	_, err := os.Stat(p)
 	tt.a.False(err == nil, "file %s exists, but it shouldn't", p)
 }
 
-func (tt *testToner) checkFile(path, contents string) {
+func (tt *testAcrylic) checkFile(path, contents string) {
 	fc := tt.readFile(path)
 	tt.a.Equal(contents, fc, "content mismatch for %s", path)
 }
 
-func (tt *testToner) readFile(path string) string {
+func (tt *testAcrylic) readFile(path string) string {
 	f, err := os.Open(filepath.Join(tt.cfg.Root, path))
 	tt.a.MustNotError(err, "failed to open %s", path)
 	defer f.Close()
@@ -203,11 +203,11 @@ func (tt *testToner) readFile(path string) string {
 	return string(fc)
 }
 
-func (tt *testToner) checkBinFile(path string, contents []byte) {
+func (tt *testAcrylic) checkBinFile(path string, contents []byte) {
 
 }
 
-func (tt *testToner) cleanup() {
+func (tt *testAcrylic) cleanup() {
 	os.RemoveAll(tt.cfg.Root)
 }
 
@@ -291,7 +291,7 @@ func TestSiteAssetCombining(t *testing.T) {
 	pjs := strings.Index(fc, "(post 1 js stuff!)")
 	lo2js := strings.Index(fc, "(layout 2 js!)")
 	tt.a.True(lojs < pjs, "layout js should be before post js: %d < %d", lojs, pjs)
-	tt.a.True(pjs < lo2js, "post js2 should be before layout js2: %d < %d", pjs, lo2js)
+	tt.a.True(pjs < lo2js, "post js should be before layout js2: %d < %d", pjs, lo2js)
 }
 
 func TestSiteAssetsOutOfOrder(t *testing.T) {
@@ -330,9 +330,11 @@ func TestSiteAssetsOutOfOrder(t *testing.T) {
 	tt.a.NotEqual(0, len(errs))
 
 	es := errs.String()
-	tt.a.True(strings.Contains(es, "asset ordering inconsistent"), "wrong error string: %s", es)
+	tt.a.True(strings.Contains(es, "asset ordering inconsistent"),
+		"wrong error string: %s", es)
 }
 
 func TestSiteAssetMinify(t *testing.T) {
 	t.Parallel()
+	// TODO(astone): asset minification
 }

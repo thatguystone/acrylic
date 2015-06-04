@@ -1,4 +1,4 @@
-package toner
+package acryliclib
 
 import (
 	"bytes"
@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	contentKey   = "__tonerContent__"
-	parentRelKey = "__tonerParentRel__"
-	privSiteKey  = "__tonerSite__"
+	contentKey   = "__acrylicContent__"
+	parentRelKey = "__acrylicParentRel__"
+	privSiteKey  = "__acrylicSite__"
 )
 
 func init() {
@@ -23,7 +23,7 @@ func init() {
 	p2.RegisterTag("js_all", jsAllTag)
 	p2.RegisterTag("css_all", cssAllTag)
 
-	// TODO(astone): NEED FILTER `contentRel` TO GET PATHS SPECIFIED BY CONTENT (IE. HEADER IMG FOR BLOG POSTS)
+	// TODO(astone): `contentRel` to get paths specified by content (ie. header img for blog posts)
 	// p2.RegisterFilter("content_rel", contentRelFilt)
 }
 

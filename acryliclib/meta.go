@@ -1,4 +1,4 @@
-package toner
+package acryliclib
 
 import "gopkg.in/yaml.v2"
 
@@ -29,3 +29,6 @@ func (m meta) publish() bool {
 
 	return b
 }
+
+// TODO(astone): content titles
+// TODO(astone): content dates, possibly from titles

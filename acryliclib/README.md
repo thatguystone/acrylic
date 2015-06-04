@@ -1,4 +1,4 @@
-# Toner
+# Acrylic
 
 Directory layout:
 
@@ -15,9 +15,9 @@ Tags:
 * `css <string>`: add a css file to page
 * `css_all`: print the combined css tag
 * `img <src> [opts...]`: insert an image; opts follow
-	# width=px - use 0 to scale automatically
-	# height=px - use 0 to scale automatically
-	# crop="<left,centered>" (quotes matter)
+	1. width=px - use 0 to scale automatically
+	1. height=px - use 0 to scale automatically
+	1. crop="<left,centered>" (quotes matter)
 
 Notes:
 

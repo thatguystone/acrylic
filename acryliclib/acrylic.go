@@ -1,7 +1,7 @@
-package toner
+package acryliclib
 
-// Toner represents a single site
-type Toner struct {
+// Acrylic represents a single site
+type Acrylic struct {
 	cfg Config
 }
 
@@ -10,15 +10,15 @@ type Toner struct {
 type BuildStats struct {
 }
 
-func New(cfg Config) *Toner {
+func New(cfg Config) *Acrylic {
 	cfg.setDefaults()
 
-	return &Toner{
+	return &Acrylic{
 		cfg: cfg,
 	}
 }
 
 // Build builds the current site
-func (t *Toner) Build() (BuildStats, Errors) {
+func (t *Acrylic) Build() (BuildStats, Errors) {
 	return newSite(&t.cfg).build()
 }
