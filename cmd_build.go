@@ -2,24 +2,47 @@ package main
 
 import (
 	"errors"
-	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/thatguystone/acrylic/acryliclib"
 )
 
-func cmdBuild(cfgFile string) error {
-	stats, errs := acryliclib.Build(acryliclib.Config{})
+func cmdBuild(cfg Config) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.Chdir(filepath.Dir(cfg.path))
+	if err != nil {
+		panic(err)
+	}
+
+	stats, errs := acryliclib.Build(cfg.Config)
 	if len(errs) > 0 {
 		return errors.New(errs.String())
 	}
 
-	fmt.Println("Site built!")
-	fmt.Printf("	Pages: %d\n", stats.Pages)
-	fmt.Printf("	JS:    %d\n", stats.JS)
-	fmt.Printf("	CSS:   %d\n", stats.CSS)
-	fmt.Printf("	Imgs:  %d\n", stats.Imgs)
-	fmt.Printf("	Blobs: %d\n", stats.Blobs)
-	fmt.Printf("	Took:  %v\n", stats.Duration)
+	if stats.Duration > time.Millisecond {
+		stats.Duration /= time.Millisecond
+		stats.Duration *= time.Millisecond
+	}
+
+	log.Printf("Site built!")
+	log.Printf("    Pages: %d", stats.Pages)
+	log.Printf("    JS:    %d", stats.JS)
+	log.Printf("    CSS:   %d", stats.CSS)
+	log.Printf("    Imgs:  %d", stats.Imgs)
+	log.Printf("    Blobs: %d", stats.Blobs)
+	log.Printf("    Took:  %v", stats.Duration)
+
+	err = os.Chdir(cwd)
+	if err != nil {
+		panic(err)
+	}
 
 	return nil
 }

@@ -40,7 +40,14 @@ var (
 		imgPubDir,
 		staticPubDir,
 	}
+
+	allReservedPaths = []string{}
 )
+
+func init() {
+	allReservedPaths = append(allReservedPaths, reservedPaths...)
+	allReservedPaths = append(allReservedPaths, reservedInternalPaths...)
+}
 
 // TODO(astone): sitemap.xml
 // TODO(astone): rss feeds
@@ -152,12 +159,13 @@ func (s *site) loadLayouts() {
 	}
 
 	if s.cfg.Theme != "" {
-		themeDir := filepath.Join(s.cfg.ThemesDir, s.cfg.Theme)
+		themeDir := filepath.Join(s.cfg.Root, s.cfg.ThemesDir, s.cfg.Theme)
 		if !dExists(themeDir) {
 			s.errs.add(themeDir, errors.New("theme does not exist"))
 			return
 		}
 
+		themeDir = filepath.Join(s.cfg.ThemesDir, s.cfg.Theme)
 		s.loadLayoutDir(themeDir, true, 2)
 	}
 
@@ -227,9 +235,10 @@ func (s *site) loadLayoutDir(dir string, isTheme bool, depth int) {
 			}
 
 			path := fDropRoot(s.cfg.Root, f.srcPath)
-			for depth > 0 {
+			currDepth := depth
+			for currDepth > 0 {
 				path = fDropFirst(path)
-				depth--
+				currDepth--
 			}
 
 			which := fChangeExt(path, "")
@@ -314,9 +323,16 @@ func (s *site) generate() {
 		defer wg.Done()
 
 		for gp := range ch {
+			c := gp.c
+
+			// Don't generate layout and theme pages unless explicitly requested
+			if res := fPathCheckFor(c.f.dstPath, allReservedPaths...); res != "" {
+				continue
+			}
+
 			_, err := gp.generatePage()
 			if err != nil {
-				s.errs.add(gp.c.f.srcPath, err)
+				s.errs.add(c.f.srcPath, err)
 			}
 		}
 	}

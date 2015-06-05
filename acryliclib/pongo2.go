@@ -3,6 +3,7 @@ package acryliclib
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"reflect"
 
 	p2 "github.com/flosch/pongo2"
@@ -15,6 +16,7 @@ const (
 )
 
 func init() {
+	p2.RegisterTag("url", urlTag)
 	p2.RegisterTag("content", contentTag)
 
 	p2.RegisterTag("js", jsTag)
@@ -31,6 +33,11 @@ type p2RelNode struct {
 	file string
 }
 
+type urlNode struct {
+	p2RelNode
+	exp p2.IEvaluator
+}
+
 type contentNode struct{}
 
 type assetTagNode struct {
@@ -40,13 +47,43 @@ type assetTagNode struct {
 	genType reflect.Type
 }
 
-type jsAllNode struct{}
-type cssAllNode struct{}
+type assetAllNode struct {
+	p2RelNode
+	what   string
+	tagger tagWriter
+}
 
-func (n contentNode) Execute(
-	ctx *p2.ExecutionContext,
-	w p2.TemplateWriter) *p2.Error {
+func (n urlNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Error {
+	s := ctx.Public[privSiteKey].(*site)
+	c := ctx.Public[contentKey].(*content)
 
+	v, perr := n.exp.Evaluate(ctx)
+	if perr != nil {
+		return perr
+	}
+
+	currFile := n.contentRel(c)
+
+	c, err := s.findContent(currFile, v.String())
+	if err != nil {
+		s.errs.add(c.f.srcPath, fmt.Errorf("url: file not found: %s", err))
+		return nil
+	}
+
+	path, err := c.gen.(contentGener).generatePage()
+	if err == nil {
+		relPath := c.relDest(path)
+		_, err = w.WriteString(relPath)
+	}
+
+	if err != nil {
+		s.errs.add(c.f.srcPath, fmt.Errorf("url: %v", err))
+	}
+
+	return nil
+}
+
+func (contentNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Error {
 	s := ctx.Public[privSiteKey].(*site)
 	c := ctx.Public[contentKey].(*content)
 
@@ -77,10 +114,7 @@ func (n contentNode) Execute(
 	return nil
 }
 
-func (n assetTagNode) Execute(
-	ctx *p2.ExecutionContext,
-	w p2.TemplateWriter) *p2.Error {
-
+func (n assetTagNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Error {
 	s := ctx.Public[privSiteKey].(*site)
 	pc := ctx.Public[contentKey].(*content)
 	currFile := n.contentRel(pc)
@@ -95,13 +129,13 @@ func (n assetTagNode) Execute(
 
 		c, err := s.findContent(currFile, path)
 		if err != nil {
-			s.errs.add(currFile, fmt.Errorf("%s: file not found: %s", n.what, err))
+			s.errs.add(pc.f.srcPath, fmt.Errorf("%s: file not found: %s", n.what, err))
 			continue
 		}
 
 		ok := reflect.TypeOf(c.gen) == n.genType
 		if !ok {
-			s.errs.add(currFile,
+			s.errs.add(pc.f.srcPath,
 				fmt.Errorf("%s: `%s` is not a %s file, have %s",
 					n.what, path, n.what,
 					c.gen.(contentGener).humanName()))
@@ -115,23 +149,28 @@ func (n assetTagNode) Execute(
 		}
 
 		if err != nil {
-			s.errs.add(currFile, fmt.Errorf("%s: %v", n.what, err))
+			s.errs.add(pc.f.srcPath, fmt.Errorf("%s: %v", n.what, err))
 		}
 	}
 
 	return nil
 }
 
-func (n jsAllNode) Execute(
-	ctx *p2.ExecutionContext,
-	w p2.TemplateWriter) *p2.Error {
+func (n assetAllNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Error {
+	s := ctx.Public[privSiteKey].(*site)
+	c := ctx.Public[contentKey].(*content)
 
-	return nil
-}
+	if !s.assets.getType(n.what).doCombine {
+		return nil
+	}
 
-func (n cssAllNode) Execute(
-	ctx *p2.ExecutionContext,
-	w p2.TemplateWriter) *p2.Error {
+	relPath := c.relDest(filepath.Join(s.cfg.Root, staticPubDir, combinedName))
+	relPath += "." + n.what
+
+	err := n.tagger.writeTag(relPath, w)
+	if err != nil {
+		s.errs.add(c.f.srcPath, fmt.Errorf("%s_all: %v", n.what, err))
+	}
 
 	return nil
 }
@@ -153,6 +192,26 @@ func tagParseExpressions(
 	}
 
 	return exps, nil
+}
+
+func urlTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
+	if args.Count() != 1 {
+		return nil, args.Error(
+			fmt.Sprintf("url: only 1 argument expected, not %d", args.Count()),
+			nil)
+	}
+
+	exp, err := args.ParseExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	n := urlNode{
+		p2RelNode: p2RelFromToken(s),
+		exp:       exp,
+	}
+
+	return n, nil
 }
 
 func contentTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
@@ -214,7 +273,12 @@ func jsAllTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Erro
 		return nil, args.Error("js_all: no arguments expected", nil)
 	}
 
-	return jsAllNode{}, nil
+	n := assetAllNode{
+		p2RelNode: p2RelFromToken(s),
+		what:      "js",
+		tagger:    renderJS{},
+	}
+	return n, nil
 }
 
 func cssAllTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
@@ -222,7 +286,13 @@ func cssAllTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Err
 		return nil, args.Error("css_all: no arguments expected", nil)
 	}
 
-	return cssAllNode{}, nil
+	n := assetAllNode{
+		p2RelNode: p2RelFromToken(s),
+		what:      "css",
+		tagger:    renderCSS{},
+	}
+
+	return n, nil
 }
 
 func p2RelFromToken(t *p2.Token) p2RelNode {

@@ -38,10 +38,14 @@ type assetOrdering struct {
 	css []string
 }
 
+type tagWriter interface {
+	writeTag(path string, w io.Writer) error
+}
+
 type asseter interface {
 	renderer
+	tagWriter
 	getBase() interface{}
-	writeTag(path string, w io.Writer) error
 }
 
 const (
@@ -78,6 +82,18 @@ func (a *assets) init(s *site) {
 		s.cfg.RenderCSS && s.cfg.MinifyCSS != nil,
 		s.cfg.MinifyCSS,
 		singleCSS && !s.cfg.UnorderedCSS)
+}
+
+func (a *assets) getType(atype string) *assetType {
+	switch atype {
+	case "js":
+		return &a.js
+
+	case "css":
+		return &a.css
+	}
+
+	panic(fmt.Errorf("unrecognized asset type: %s", atype))
 }
 
 func (a *assets) writeTag(c *content, dstPath, relPath string, w io.Writer) (err error) {

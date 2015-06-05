@@ -10,7 +10,7 @@ func testP2Exec(t *testing.T, in string, out string, files ...testFile) {
 	tt := testNew(t, true, nil, files...)
 	defer tt.cleanup()
 
-	tt.checkFile("public/tpl/render.html",
+	tt.contents("public/tpl/render.html",
 		out)
 }
 

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"os"
 
 	"github.com/codegangsta/cli"
@@ -33,6 +33,11 @@ func main() {
 			Action: acts.build,
 		},
 		cli.Command{
+			Name:   "clean",
+			Usage:  "clean up the public dir",
+			Action: acts.clean,
+		},
+		cli.Command{
 			Name:   "new",
 			Usage:  "create a new site in the current directory",
 			Action: acts.new,
@@ -41,34 +46,29 @@ func main() {
 			Name:   "serve",
 			Usage:  "serve the current site, rebuilding when changes are made",
 			Action: acts.serve,
-			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:  "no-watch",
-					Usage: "don't monitor for changes",
-				},
-			},
 		},
 	}
+
+	// log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	app.Run(os.Args)
 }
 
 func (actions) build(c *cli.Context) {
-	err := cmdBuild(c.GlobalString("config"))
+	err := cmdBuild(mustLoadConfig(c))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
+}
+
+func (actions) clean(c *cli.Context) {
+	cmdClean(mustLoadConfig(c))
 }
 
 func (actions) new(c *cli.Context) {
-	err := cmdNew(c.GlobalString("config"))
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	cmdNew(c.GlobalString("config"))
 }
 
 func (actions) serve(c *cli.Context) {
-
+	cmdServe(c.GlobalString("config"))
 }

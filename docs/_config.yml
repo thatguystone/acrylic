@@ -1,0 +1,8 @@
+# Acrylic Configuration
+#
+# This file is left blank by default since the application provides sensible
+# defaults for everything. For a full list of configuration options and
+# values, see https://thatguystone.github.io/acrylic/config/
+
+theme: acrylic-docs
+publicDir: ../gh-pages/

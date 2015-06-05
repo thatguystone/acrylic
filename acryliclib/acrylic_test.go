@@ -1,6 +1,7 @@
 package acryliclib
 
 import (
+	"bytes"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -11,8 +12,8 @@ import (
 )
 
 type testAcrylic struct {
-	*Acrylic
-	a assert.A
+	a   assert.A
+	cfg Config
 }
 
 type testFile struct {
@@ -124,10 +125,14 @@ var (
 )
 
 func testConfig() *Config {
-	return &Config{
+	cfg := &Config{
 		Root:       filepath.Join("test_data", assert.GetTestName()),
 		MinifyHTML: true,
 	}
+
+	cfg.setDefaults()
+
+	return cfg
 }
 
 func testNew(t *testing.T, build bool, cfg *Config, files ...testFile) *testAcrylic {
@@ -136,18 +141,27 @@ func testNew(t *testing.T, build bool, cfg *Config, files ...testFile) *testAcry
 	}
 
 	tt := &testAcrylic{
-		Acrylic: New(*cfg),
-		a:       assert.From(t),
+		a:   assert.From(t),
+		cfg: *cfg,
 	}
 
 	tt.createFiles(files)
+	tt.a.Logf("Initial files:\n%s", tt.tree(""))
 
 	if build {
-		_, errs := tt.Build()
-		tt.a.MustEqual(0, len(errs), "failed to build site; errs=%v", errs)
+		tt.build()
 	}
 
 	return tt
+}
+
+func (tt *testAcrylic) build() BuildStats {
+	stats, errs := Build(tt.cfg)
+	tt.a.MustEqual(0, len(errs), "failed to build site; errs=%v", errs)
+
+	tt.a.Logf("Generated files:\n%s", tt.tree(tt.cfg.PublicDir))
+
+	return stats
 }
 
 func (tt *testAcrylic) createFiles(files []testFile) {
@@ -187,7 +201,7 @@ func (tt *testAcrylic) notExists(path string) {
 	tt.a.False(err == nil, "file %s exists, but it shouldn't", p)
 }
 
-func (tt *testAcrylic) checkFile(path, contents string) {
+func (tt *testAcrylic) contents(path, contents string) {
 	fc := tt.readFile(path)
 	tt.a.Equal(contents, fc, "content mismatch for %s", path)
 }
@@ -201,6 +215,29 @@ func (tt *testAcrylic) readFile(path string) string {
 	tt.a.MustNotError(err, "failed to read %s", path)
 
 	return string(fc)
+}
+
+func (tt *testAcrylic) tree(dir string) string {
+	root := filepath.Join(tt.cfg.Root, dir)
+
+	if !dExists(root) {
+		return ""
+	}
+
+	b := bytes.Buffer{}
+
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+
+		b.WriteString("\t" + fDropRoot(tt.cfg.Root, path) + "\n")
+		return nil
+	})
+
+	tt.a.MustNotError(err, "failed to walk %s", tt.cfg.Root)
+
+	return b.String()
 }
 
 func (tt *testAcrylic) checkBinFile(path string, contents []byte) {
@@ -227,17 +264,17 @@ func TestBasicSite(t *testing.T) {
 	tt.exists("public/static/css/blog/post1.css")
 	tt.exists("public/static/css/blog/post2.css")
 
-	tt.checkFile("public/index.html", defaultLayouts["_index"])
-	tt.checkFile("public/blog/empty/index.html", defaultLayouts["_list"])
+	tt.contents("public/index.html", defaultLayouts["_index"])
+	tt.contents("public/blog/empty/index.html", defaultLayouts["_list"])
 
-	tt.checkFile("public/blog/post1.html",
+	tt.contents("public/blog/post1.html",
 		`<script src=../../static/js/layout/blog/layout.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout.css>Blog layout:<h1>post 1</h1><p>post 1<script src=../static/js/blog/post1.js></script><link rel=stylesheet href=../static/css/blog/post1.css></p><img src=../static/img/layout/blog/img.png style=width:1px;height:1px;><script src=../../static/js/layout/blog/layout2.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout2.css>`)
-	tt.checkFile("public/blog/post2.html",
+	tt.contents("public/blog/post2.html",
 		`<script src=../../static/js/layout/blog/layout.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout.css>Blog layout:<h1>post 2</h1><p>post 2<script src=../static/js/blog/post2.js></script><link rel=stylesheet href=../static/css/blog/post2.css></p><img src=../static/img/layout/blog/img.png style=width:1px;height:1px;><script src=../../static/js/layout/blog/layout2.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout2.css>`)
 
-	tt.checkFile("public/static/js/layout/blog/layout2.js",
+	tt.contents("public/static/js/layout/blog/layout2.js",
 		`(layout 2 js!)`)
-	tt.checkFile("public/static/css/layout/blog/layout2.css",
+	tt.contents("public/static/css/layout/blog/layout2.css",
 		`(layout 2 css!)`)
 }
 
@@ -257,14 +294,58 @@ func TestBuildStats(t *testing.T) {
 	)...)
 	defer tt.cleanup()
 
-	stats, errs := tt.Build()
-	tt.a.MustEqual(0, len(errs), "failed to build site; errs=%v", errs)
-
+	stats := tt.build()
 	tt.a.True(stats.Duration > 0, "duration wasn't set properly: %d == 0", stats.Duration)
 	tt.a.True(stats.Pages > 0, "pages wasn't set properly: %d == 0", stats.Pages)
 	tt.a.True(stats.JS > 0, "js wasn't set properly: %d == 0", stats.JS)
 	tt.a.True(stats.CSS > 0, "css wasn't set properly: %d == 0", stats.CSS)
 	tt.a.True(stats.Imgs > 0, "imgs wasn't set properly: %d == 0", stats.Imgs)
+}
+
+func TestLayoutAndThemesContentPages(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.Theme = "test"
+
+	pages := append([]testFile{}, basicSite...)
+	tt := testNew(t, true, cfg, append(pages,
+		testFile{
+			p:  "content/page.md",
+			sc: `some page`,
+		},
+		testFile{
+			p:  "layouts/_index.html",
+			sc: `{% url "layout_linked.md" %}`,
+		},
+		testFile{
+			p:  "layouts/layout_linked.md",
+			sc: `layouts linked`,
+		},
+		testFile{
+			p:  "layouts/layout_unlinked.md",
+			sc: `layouts unlinked`,
+		},
+		testFile{
+			p:  "themes/test/_single.html",
+			sc: `{% url "theme_linked.md" %}`,
+		},
+		testFile{
+			p:  "themes/test/theme_linked.md",
+			sc: `theme linked`,
+		},
+		testFile{
+			p:  "themes/test/theme_unlinked.md",
+			sc: `theme unlinked`,
+		},
+	)...)
+	defer tt.cleanup()
+
+	tt.exists("public/layout/layout_linked.html")
+	tt.exists("public/theme/test/theme_linked.html")
+
+	tt.notExists("public/layout/layout_unlinked.html")
+	tt.notExists("public/theme/test/theme_unlinked.html")
 }
 
 func TestSiteLayoutChanging(t *testing.T) {
@@ -286,7 +367,7 @@ func TestSiteLayoutChanging(t *testing.T) {
 
 	defer tt.cleanup()
 
-	tt.checkFile("public/post.html", content)
+	tt.contents("public/post.html", content)
 }
 
 func TestSiteAssetCombining(t *testing.T) {
@@ -306,6 +387,9 @@ func TestSiteAssetCombining(t *testing.T) {
 
 	tt.exists("public/static/all.css")
 	tt.notExists("public/static/js/layout/blog/layout2.css")
+
+	tt.contents("public/blog/post2.html",
+		"Blog layout:<h1>post 2</h1><p>post 2</p><img src=../static/img/layout/blog/img.png style=width:1px;height:1px;><script src=../../static/all.js></script><link rel=stylesheet href=../../static/all.css>")
 
 	fc := tt.readFile("public/static/all.js")
 	tt.a.Equal(1, strings.Count(fc, "(layout js!)"), "js should only appear once")
@@ -352,7 +436,7 @@ func TestSiteAssetsOutOfOrder(t *testing.T) {
 		})
 	defer tt.cleanup()
 
-	_, errs := tt.Build()
+	_, errs := Build(tt.cfg)
 	tt.a.NotEqual(0, len(errs))
 
 	es := errs.String()

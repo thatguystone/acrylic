@@ -10,21 +10,34 @@ type Config struct {
 	Theme string // Name of the theme to use
 
 	FileMode   os.FileMode // For generated content. Defaults to 0640.
-	DataDir    string      // Defaults to "data"
-	ContentDir string      // Defaults to "content"
-	LayoutsDir string      // Defaults to "layouts"
-	PublicDir  string      // Defaults to "public"
-	ThemesDir  string      // Defaults to "themes"
+	DataDir    string      `yaml:"dataDir"`    // Defaults to "data"
+	ContentDir string      `yaml:"contentDir"` // Defaults to "content"
+	LayoutsDir string      `yaml:"layoutsDir"` // Defaults to "layouts"
+	PublicDir  string      `yaml:"publicDir"`  // Defaults to "public"
+	ThemesDir  string      `yaml:"themesDir"`  // Defaults to "themes"
 
-	MinifyHTML bool     // If generated HTML should be minified
-	RenderJS   bool     // If coffee/dart/etc should be rendered to JS
-	SingleJS   bool     // If all found js files should be combined. Only used if RenderJS == true
-	MinifyJS   Minifier // How to minify rendered JS
-	RenderCSS  bool     // If less/sass/etc should be rendered to CSS
-	SingleCSS  bool     // If all found css files should be combined. Only used if RenderCSS == true
-	MinifyCSS  Minifier // How to minify rendered CSS
+	// If generated HTML should be minified
+	MinifyHTML bool `yaml:"minifyHTML"`
 
-	// If your assets are sensitive to ordering (1 js file must be loaded
+	// If coffee/dart/etc should be rendered to JS
+	RenderJS bool `yaml:"renderJS"`
+
+	// If all found js files should be combined. Only used if RenderJS == true
+	SingleJS bool `yaml:"singleJS"`
+
+	// How to minify rendered JS
+	MinifyJS Minifier `yaml:"minifyJS"`
+
+	// If less/sass/etc should be rendered to CSS
+	RenderCSS bool `yaml:"renderCSS"`
+
+	// If all found css files should be combined. Only used if RenderCSS == true
+	SingleCSS bool `yaml:"singleCSS"`
+
+	// How to minify rendered CSS
+	MinifyCSS Minifier `yaml:"minifyCSS"`
+
+	// If your assets are sensitive to ordering (one js file must be loaded
 	// before another), it's necessary to check that the unified asset files
 	// have assets in the correct order. If they're not sensitive to ordering,
 	// set this to True.
