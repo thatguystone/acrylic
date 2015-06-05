@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"runtime/pprof"
 
 	"github.com/codegangsta/cli"
 )
@@ -28,6 +29,18 @@ func main() {
 
 	app.Commands = []cli.Command{
 		cli.Command{
+			Name:   "benchmark",
+			Usage:  "benchmark by building the docs repeatedly",
+			Action: acts.benchmark,
+			Flags: []cli.Flag{
+				cli.IntFlag{
+					Name:  "times",
+					Value: 1000,
+					Usage: "how many times to build the docs",
+				},
+			},
+		},
+		cli.Command{
 			Name:   "build",
 			Usage:  "regenerate the current site",
 			Action: acts.build,
@@ -52,6 +65,33 @@ func main() {
 	// log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	app.Run(os.Args)
+}
+
+func (actions) benchmark(c *cli.Context) {
+	cfg, err := loadConfig("docs/_config.yml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cpuProfile := "cpu.out"
+	f, err := os.Create(cpuProfile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pprof.StartCPUProfile(f)
+	defer f.Close()
+	defer pprof.StopCPUProfile()
+
+	times := c.Int("times")
+	for i := 0; i < times; i++ {
+		err := cmdBuild(cfg)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	log.Println("CPU profile written to", cpuProfile)
 }
 
 func (actions) build(c *cli.Context) {

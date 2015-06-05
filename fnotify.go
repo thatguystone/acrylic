@@ -28,11 +28,10 @@ func fwatch() *fnotify {
 }
 
 func (fnot *fnotify) refreshWatcher() {
-	if fnot.watcher == nil {
-		return
+	if fnot.watcher != nil {
+		fnot.watcher.Close()
 	}
 
-	fnot.watcher.Close()
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -49,14 +48,8 @@ func (fnot *fnotify) setDir(dir string) {
 		}
 	}
 
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fnot.watcher = watcher
-	fnot.doRecursive(watcher, dir, true)
-	go fnot.run(watcher)
+	fnot.doRecursive(fnot.watcher, dir, true)
+	go fnot.run(fnot.watcher)
 }
 
 func (fnot *fnotify) doRecursive(w *fsnotify.Watcher, p string, add bool) {
