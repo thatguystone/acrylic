@@ -1,4 +1,4 @@
-# Acrylic
+# Acrylic [![Build Status](https://travis-ci.org/thatguystone/acrylic.svg)](https://travis-ci.org/thatguystone/acrylic)
 
 Directory layout:
 
