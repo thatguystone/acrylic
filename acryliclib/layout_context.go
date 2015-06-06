@@ -2,6 +2,7 @@ package acryliclib
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -38,6 +39,13 @@ type ctxTime struct {
 	format string
 }
 
+const (
+	assetOrdKey = "__acrylicAssetsOrd__"
+	contentKey  = "__acrylicContent__"
+	isPageKey   = "__acrylicIsPage__"
+	privSiteKey = "__acrylicSite__"
+)
+
 func newLayoutCtx(s *site, c *content) layoutContext {
 	return layoutContext{
 		s:  s,
@@ -47,10 +55,11 @@ func newLayoutCtx(s *site, c *content) layoutContext {
 	}
 }
 
-func (lctx layoutContext) forLayout() p2.Context {
+func (lctx layoutContext) forLayout(assetOrd *assetOrdering) p2.Context {
 	return p2.Context{
 		privSiteKey: lctx.s,
 		contentKey:  lctx.c,
+		assetOrdKey: assetOrd,
 		"Site":      lctx.ls,
 		"Page":      lctx.lp,
 	}
@@ -60,6 +69,8 @@ func (lctx layoutContext) forPage() p2.Context {
 	return p2.Context{
 		privSiteKey: lctx.s,
 		contentKey:  lctx.c,
+		assetOrdKey: &lctx.c.assetOrd,
+		isPageKey:   true,
 		// TODO(astone): need to restrict Site.Content.Find() in pages, too
 		"Site": lctx.ls,
 		"Page": layoutRestrictedPageCtx{lctx.lp},

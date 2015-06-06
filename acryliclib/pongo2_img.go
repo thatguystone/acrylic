@@ -30,6 +30,8 @@ type imgSrcTagNode struct {
 	imgTagNodeBase
 }
 
+const parentRelKey = "__acrylicParentRel__"
+
 func (n imgTagNodeBase) getImg(ctx *p2.ExecutionContext) (img img, err *p2.Error) {
 	evals := [...]p2.IEvaluator{
 		n.src,
@@ -223,7 +225,7 @@ func (n imgTagNode) Execute(
 		"crop":       img.crop.String(),
 	})
 
-	lo := s.findLayout(c.cpath, "_img", true)
+	lo := s.findLayout(c.cpath, "_img_tag", true)
 	err := lo.execute(imgctx, w)
 	if err != nil {
 		return ctx.Error(fmt.Sprintf("img: failed to write tag: %s", err), nil)

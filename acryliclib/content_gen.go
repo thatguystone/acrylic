@@ -71,6 +71,7 @@ func (gw *contentGenWrapper) getGener() interface{} {
 func (gw *contentGenWrapper) generatePage() (dstPath string) {
 	dstPath, alreadyClaimed, err := gw.gener.claimDest(gw.c)
 	if err != nil {
+		close(gw.contentGened)
 		gw.s.errs.add(gw.c.f.srcPath, err)
 		return
 	}
@@ -83,7 +84,10 @@ func (gw *contentGenWrapper) generatePage() (dstPath string) {
 
 	if err == nil {
 		gw.content = string(content)
-		close(gw.contentGened)
+		if len(gw.content) == 0 {
+			// For recursive rendering: don't allow getContent() to fail
+			gw.content = " "
+		}
 
 		wroteOwnFile := false
 		wroteOwnFile, err = gw.gener.generate(content, dstPath, gw.s, gw.c)
@@ -91,9 +95,11 @@ func (gw *contentGenWrapper) generatePage() (dstPath string) {
 		if err == nil && !wroteOwnFile {
 			err = gw.writeFile(dstPath, content)
 		}
-	} else {
-		close(gw.contentGened)
 	}
+
+	// Don't pass out content until all assets and everything are
+	// populated
+	close(gw.contentGened)
 
 	if err != nil {
 		gw.s.errs.add(gw.c.f.srcPath, err)

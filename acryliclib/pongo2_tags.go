@@ -7,12 +7,6 @@ import (
 	p2 "github.com/flosch/pongo2"
 )
 
-const (
-	contentKey   = "__acrylicContent__"
-	parentRelKey = "__acrylicParentRel__"
-	privSiteKey  = "__acrylicSite__"
-)
-
 func init() {
 	p2.RegisterTag("url", urlTag)
 
@@ -99,6 +93,8 @@ func (n urlNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Erro
 func (n assetTagNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Error {
 	s := ctx.Public[privSiteKey].(*site)
 	pc := ctx.Public[contentKey].(*content)
+	assetOrd := ctx.Public[assetOrdKey].(*assetOrdering)
+
 	currFile := n.contentRel(pc)
 
 	for _, src := range n.srcs {
@@ -125,7 +121,7 @@ func (n assetTagNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2
 
 		path = c.gen.generatePage()
 		relPath := c.relDest(path)
-		err = s.assets.writeTag(pc, path, relPath, w)
+		err = s.assets.addAndWrite(assetOrd, path, relPath, w)
 
 		if err != nil {
 			s.errs.add(pc.f.srcPath, fmt.Errorf("%s: %v", n.what, err))

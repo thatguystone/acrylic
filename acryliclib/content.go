@@ -21,20 +21,14 @@ type contents struct {
 }
 
 type content struct {
-	cs      *contents
-	f       file
-	cpath   string
-	metaEnd int
-	meta    *meta
-	loutCtx layoutContext
-	gen     contentGenWrapper
-
-	// Assets need to be ordered how they appear on the page, unless otherwise
-	// noted. This flag sets when it's time to start rearranging assets. See
-	// Config.OrderedAssets for more details.
-	kickAssets bool
-	orderedJS  []string
-	orderedCSS []string
+	cs       *contents
+	f        file
+	cpath    string
+	metaEnd  int
+	meta     *meta
+	loutCtx  layoutContext
+	gen      contentGenWrapper
+	assetOrd assetOrdering
 }
 
 const (

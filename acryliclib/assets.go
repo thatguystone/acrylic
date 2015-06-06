@@ -22,15 +22,16 @@ type assetType struct {
 	doMin       bool
 	min         Minifier
 	verifyOrder bool
+	orderChecks []assetOrderCheck
 
 	mtx       sync.Mutex
-	paths     []*orderedAsset          // Order to concat in combined
-	havePaths map[string]*orderedAsset // Quick lookup
+	paths     []string            // Order to concat in combined
+	havePaths map[string]struct{} // Quick lookup
 }
 
-type orderedAsset struct {
-	path string
-	i    int
+type assetOrderCheck struct {
+	srcPath string
+	files   []string
 }
 
 type assetOrdering struct {
@@ -97,7 +98,16 @@ func (a *assets) getType(contType contentType) *assetType {
 	panic(fmt.Errorf("assets with tag content type %d not managed", contType))
 }
 
-func (a *assets) writeTag(c *content, dstPath, relPath string, w io.Writer) (err error) {
+func (a *assets) addToOrderCheck(srcPath string, assetOrd assetOrdering) {
+	a.js.addToOrderCheck(srcPath, assetOrd.js)
+	a.css.addToOrderCheck(srcPath, assetOrd.css)
+}
+
+func (a *assets) addAndWrite(
+	astOrd *assetOrdering,
+	dstPath, relPath string,
+	w io.Writer) (err error) {
+
 	var asstr asseter
 	ext := filepath.Ext(dstPath)
 	for _, tagWriter := range asseters {
@@ -116,11 +126,11 @@ func (a *assets) writeTag(c *content, dstPath, relPath string, w io.Writer) (err
 	switch asstr.contentType() {
 	case contJS:
 		writeTag = !a.js.doCombine
-		a.js.addPath(c.kickAssets, &c.orderedJS, dstPath)
+		a.js.addPath(&astOrd.js, dstPath)
 
 	case contCSS:
 		writeTag = !a.css.doCombine
-		a.css.addPath(c.kickAssets, &c.orderedCSS, dstPath)
+		a.css.addPath(&astOrd.css, dstPath)
 	}
 
 	if writeTag {
@@ -131,7 +141,8 @@ func (a *assets) writeTag(c *content, dstPath, relPath string, w io.Writer) (err
 }
 
 func (a *assets) crunch() {
-	ok := a.verifyOrdering()
+	// ok := a.verifyOrdering()
+	ok := true
 
 	if ok {
 		ok = a.js.combine()
@@ -145,28 +156,28 @@ func (a *assets) crunch() {
 	a.css.minify()
 }
 
-func (a *assets) verifyOrdering() bool {
-	if !a.js.verifyOrder && !a.css.verifyOrder {
-		return true
-	}
+// func (a *assets) verifyOrdering() bool {
+// 	if !a.js.verifyOrder && !a.css.verifyOrder {
+// 		return true
+// 	}
 
-	for _, c := range a.s.cs.srcs {
-		ok, failedAt := a.js.verifyOrdering(c.orderedJS)
-		if ok {
-			ok, failedAt = a.css.verifyOrdering(c.orderedCSS)
-		}
+// 	for _, c := range a.s.cs.srcs {
+// 		ok, failedAt := a.js.verifyOrdering(c.orderedJS)
+// 		if ok {
+// 			ok, failedAt = a.css.verifyOrdering(c.orderedCSS)
+// 		}
 
-		if !ok {
-			a.s.errs.add(c.f.srcPath,
-				fmt.Errorf("asset ordering inconsistent with %s. "+
-					"You probably ordered the assets differently in another file.",
-					failedAt))
-			return false
-		}
-	}
+// 		if !ok {
+// 			a.s.errs.add(c.f.srcPath,
+// 				fmt.Errorf("asset ordering inconsistent with %s. "+
+// 					"You probably ordered the assets differently in another file.",
+// 					failedAt))
+// 			return false
+// 		}
+// 	}
 
-	return true
-}
+// 	return true
+// }
 
 func (at *assetType) init(
 	s *site,
@@ -187,34 +198,30 @@ func (at *assetType) init(
 	at.doMin = doMin
 	at.min = min
 	at.verifyOrder = verifyOrder
-	at.havePaths = map[string]*orderedAsset{}
+	at.havePaths = map[string]struct{}{}
 }
 
-func (at *assetType) addPath(kickAssets bool, ordering *[]string, path string) {
-	at.mtx.Lock()
-
-	appendPath := false
-	if oa, ok := at.havePaths[path]; ok {
-		if kickAssets {
-			decs := at.paths[oa.i+1:]
-			at.paths = append(at.paths[:oa.i], decs...)
-			appendPath = true
-
-			for _, d := range decs {
-				d.i--
-			}
-		}
-	} else {
-		appendPath = true
+func (at *assetType) addToOrderCheck(srcPath string, ord []string) {
+	if len(ord) == 0 {
+		return
 	}
 
-	if appendPath {
-		oa := &orderedAsset{
-			path: path,
-			i:    len(at.paths),
-		}
-		at.paths = append(at.paths, oa)
-		at.havePaths[path] = oa
+	at.mtx.Lock()
+
+	at.orderChecks = append(at.orderChecks, assetOrderCheck{
+		srcPath: srcPath,
+		files:   ord,
+	})
+
+	at.mtx.Unlock()
+}
+
+func (at *assetType) addPath(ord *[]string, path string) {
+	at.mtx.Lock()
+
+	if _, ok := at.havePaths[path]; !ok {
+		at.paths = append(at.paths, path)
+		at.havePaths[path] = struct{}{}
 	}
 
 	// for i, oa := range at.paths {
@@ -223,30 +230,30 @@ func (at *assetType) addPath(kickAssets bool, ordering *[]string, path string) {
 	// 	}
 	// }
 
-	if ordering != nil {
-		*ordering = append(*ordering, path)
+	if ord != nil {
+		*ord = append(*ord, path)
 	}
 
 	at.mtx.Unlock()
 }
 
-func (at *assetType) verifyOrdering(deps []string) (ok bool, failedAt string) {
-	if !at.verifyOrder {
-		return true, ""
-	}
+// func (at *assetType) verifyOrdering(deps []string) (ok bool, failedAt string) {
+// 	if !at.verifyOrder {
+// 		return true, ""
+// 	}
 
-	prev := 0
-	for _, dep := range deps {
-		oa := at.havePaths[dep]
-		if oa.i < prev {
-			return false, oa.path
-		}
+// 	prev := 0
+// 	for _, dep := range deps {
+// 		oa := at.havePaths[dep]
+// 		if oa.i < prev {
+// 			return false, oa.path
+// 		}
 
-		prev = oa.i
-	}
+// 		prev = oa.i
+// 	}
 
-	return true, ""
-}
+// 	return true, ""
+// }
 
 func (at *assetType) combine() (ok bool) {
 	if !at.doCombine {
@@ -271,8 +278,8 @@ func (at *assetType) combine() (ok bool) {
 
 	defer fa.Close()
 
-	for _, oa := range at.paths {
-		f, err := os.Open(oa.path)
+	for _, path := range at.paths {
+		f, err := os.Open(path)
 		if err != nil {
 			at.s.errs.add(dest, err)
 			return
@@ -282,14 +289,15 @@ func (at *assetType) combine() (ok bool) {
 		f.Close()
 
 		if err != nil {
-			at.s.errs.add(dest, fmt.Errorf("while copying %s: %v", oa.path, err))
+			at.s.errs.add(dest, fmt.Errorf("while copying %s: %v", path, err))
 			return
 		}
 	}
 
+	// Clear so that minificaton gets the right file
 	at.paths = nil
-	at.havePaths = map[string]*orderedAsset{}
-	at.addPath(false, nil, dest)
+	at.havePaths = map[string]struct{}{}
+	at.addPath(nil, dest)
 
 	err = fa.Close()
 	if err != nil {
@@ -311,10 +319,10 @@ func (at *assetType) minify() {
 		return
 	}
 
-	for _, oa := range at.paths {
-		err := at.min.Minify(oa.path)
+	for _, path := range at.paths {
+		err := at.min.Minify(path)
 		if err != nil {
-			at.s.errs.add(oa.path, fmt.Errorf("minification failed: %v", err))
+			at.s.errs.add(path, fmt.Errorf("minification failed: %v", err))
 		}
 	}
 }

@@ -451,6 +451,8 @@ func TestSiteAssetCombining(t *testing.T) {
 	tt.a.Equal(1, strings.Count(fc, "(post 1 js stuff!)"), "js should only appear once")
 	tt.a.Equal(1, strings.Count(fc, "(post 2 js stuff!)"), "js should only appear once")
 
+	tt.a.Logf("%s", fc)
+
 	lojs := strings.Index(fc, "(layout js!)")
 	pjs := strings.Index(fc, "(post 1 js stuff!)")
 	lo2js := strings.Index(fc, "(layout 2 js!)")

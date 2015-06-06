@@ -64,11 +64,15 @@ func (gp *contentGenPage) generate(content []byte, dstPath string, s *site, c *c
 	defer f.Close()
 
 	lo := s.findLayout(c.cpath, c.f.layoutName, true)
-	err = lo.execute(c.loutCtx.forLayout(), f)
+	assetOrd := assetOrdering{}
+
+	err = lo.execute(c.loutCtx.forLayout(&assetOrd), f)
 	if err != nil {
 		err = fmt.Errorf("content: failed to render layout: %v", err)
 		return
 	}
+
+	s.assets.addToOrderCheck(c.f.srcPath, assetOrd)
 
 	return
 }
