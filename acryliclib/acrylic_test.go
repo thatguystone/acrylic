@@ -328,6 +328,10 @@ func TestContentAutoMetas(t *testing.T) {
 			p:  "content/summary/content.md",
 			sc: "much content",
 		},
+		testFile{
+			p:  "content/summary/summary-more.md",
+			sc: "i like my content\n\n<!--more-->\n\nbut you have to click to read more",
+		},
 	)...)
 	defer tt.cleanup()
 
@@ -343,8 +347,8 @@ func TestContentAutoMetas(t *testing.T) {
 	tt.contents("public/summary/meta.html",
 		`much summary -> content:`)
 
-	tt.contents("public/summary/content.html",
-		`much content -> content:<p>much content`)
+	tt.contents("public/summary/summary-more.html",
+		`i like my content -> content:<p>i like my content</p><p>but you have to click to read more`)
 }
 
 func TestBuildStats(t *testing.T) {

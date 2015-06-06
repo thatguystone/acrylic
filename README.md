@@ -23,4 +23,6 @@ Notes:
 
 * Content exists independent of extension: `test.html` and `test.png` are the same.
 * meta `layoutName` to change which layout is used for the page
-* summary: not safe to use from content, can result in deadlock for circular summaries
+* summary
+	1. not safe to use from content, can result in deadlock for circular summaries
+	1. <!--more--> for summary cuts

@@ -60,6 +60,7 @@ func init() {
 	allReservedPaths = append(allReservedPaths, reservedInternalPaths...)
 }
 
+// TODO(astone): menus
 // TODO(astone): sitemap.xml
 // TODO(astone): rss feeds
 // TODO(astone): code highlighting
