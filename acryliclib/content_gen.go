@@ -82,13 +82,15 @@ func (gw *contentGenWrapper) generatePage() (dstPath string) {
 
 	content, err := gw.gener.render(gw.s, gw.c)
 
-	if err == nil {
-		gw.content = string(content)
-		if len(gw.content) == 0 {
-			// For recursive rendering: don't allow getContent() to fail
-			gw.content = " "
-		}
+	gw.content = string(content)
+	if len(gw.content) == 0 {
+		// For recursive rendering: don't allow getContent() to deadlock
+		gw.content = " "
+	}
 
+	close(gw.contentGened)
+
+	if err == nil {
 		wroteOwnFile := false
 		wroteOwnFile, err = gw.gener.generate(content, dstPath, gw.s, gw.c)
 
@@ -97,10 +99,6 @@ func (gw *contentGenWrapper) generatePage() (dstPath string) {
 		}
 	}
 
-	// Don't pass out content until all assets and everything are
-	// populated
-	close(gw.contentGened)
-
 	if err != nil {
 		gw.s.errs.add(gw.c.f.srcPath, err)
 		return
@@ -108,6 +106,11 @@ func (gw *contentGenWrapper) generatePage() (dstPath string) {
 
 	return
 }
+
+// Layouts call into this from `generatePage()` -> `Page.Content` in a
+// template (which produces a call to layoutPageCtx.Content()) -> here, so
+// make sure that gw.content is set to something before getting here, or
+// there's going to be some deadlock.
 func (gw *contentGenWrapper) getContent() string {
 	if len(gw.content) == 0 {
 		gw.generatePage()

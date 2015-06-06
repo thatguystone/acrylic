@@ -9,7 +9,9 @@ import (
 )
 
 type assets struct {
-	s   *site
+	s *site
+
+	// Global asset listings
 	js  assetType
 	css assetType
 }
@@ -24,9 +26,9 @@ type assetType struct {
 	verifyOrder bool
 	orderChecks []assetOrderCheck
 
-	mtx       sync.Mutex
-	paths     []string            // Order to concat in combined
-	havePaths map[string]struct{} // Quick lookup
+	mtx      sync.Mutex
+	paths    []*orderedAsset          // Order to concat in combined
+	pathsIdx map[string]*orderedAsset // Quick lookup
 }
 
 type assetOrderCheck struct {
@@ -35,8 +37,14 @@ type assetOrderCheck struct {
 }
 
 type assetOrdering struct {
-	js  []string
-	css []string
+	isPage bool // If this is for a page that's being generated
+	js     []string
+	css    []string
+}
+
+type orderedAsset struct {
+	path string
+	i    int
 }
 
 type tagWriter interface {
@@ -103,12 +111,7 @@ func (a *assets) addToOrderCheck(srcPath string, assetOrd assetOrdering) {
 	a.css.addToOrderCheck(srcPath, assetOrd.css)
 }
 
-func (a *assets) addAndWrite(
-	astOrd *assetOrdering,
-	dstPath, relPath string,
-	w io.Writer) (err error) {
-
-	var asstr asseter
+func (a *assets) addByPath(astOrd *assetOrdering, dstPath string) (asstr asseter) {
 	ext := filepath.Ext(dstPath)
 	for _, tagWriter := range asseters {
 		if tagWriter.renders(ext) {
@@ -118,19 +121,43 @@ func (a *assets) addAndWrite(
 	}
 
 	if asstr == nil {
-		panic(fmt.Errorf("unrecognized generated asset: %s", dstPath))
+		panic(fmt.Errorf("unrecognized asset: %s", dstPath))
 	}
 
-	writeTag := true
+	a.addByType(astOrd, asstr.contentType(), dstPath)
 
+	return
+}
+
+func (a *assets) addByType(astOrd *assetOrdering, contType contentType, path string) {
+	switch contType {
+	case contJS:
+		if astOrd.isPage {
+			a.js.addPath(ssLast(astOrd.js), path)
+		}
+		astOrd.js = append(astOrd.js, path)
+
+	case contCSS:
+		if astOrd.isPage {
+			a.css.addPath(ssLast(astOrd.css), path)
+		}
+		astOrd.css = append(astOrd.css, path)
+	}
+}
+
+func (a *assets) addToOrderingAndWrite(
+	astOrd *assetOrdering,
+	dstPath, relPath string,
+	w io.Writer) (err error) {
+
+	asstr := a.addByPath(astOrd, dstPath)
+
+	writeTag := true
 	switch asstr.contentType() {
 	case contJS:
 		writeTag = !a.js.doCombine
-		a.js.addPath(&astOrd.js, dstPath)
-
 	case contCSS:
 		writeTag = !a.css.doCombine
-		a.css.addPath(&astOrd.css, dstPath)
 	}
 
 	if writeTag {
@@ -141,8 +168,7 @@ func (a *assets) addAndWrite(
 }
 
 func (a *assets) crunch() {
-	// ok := a.verifyOrdering()
-	ok := true
+	ok := a.verifyOrdering()
 
 	if ok {
 		ok = a.js.combine()
@@ -156,28 +182,21 @@ func (a *assets) crunch() {
 	a.css.minify()
 }
 
-// func (a *assets) verifyOrdering() bool {
-// 	if !a.js.verifyOrder && !a.css.verifyOrder {
-// 		return true
-// 	}
+func (a *assets) verifyOrdering() bool {
+	ok, failedAt := a.js.verifyOrdering()
 
-// 	for _, c := range a.s.cs.srcs {
-// 		ok, failedAt := a.js.verifyOrdering(c.orderedJS)
-// 		if ok {
-// 			ok, failedAt = a.css.verifyOrdering(c.orderedCSS)
-// 		}
+	if ok {
+		ok, failedAt = a.css.verifyOrdering()
+	}
 
-// 		if !ok {
-// 			a.s.errs.add(c.f.srcPath,
-// 				fmt.Errorf("asset ordering inconsistent with %s. "+
-// 					"You probably ordered the assets differently in another file.",
-// 					failedAt))
-// 			return false
-// 		}
-// 	}
+	if !ok {
+		a.s.errs.add(failedAt,
+			fmt.Errorf("asset ordering inconsistent. "+
+				"you probably ordered the assets differently in another file."))
+	}
 
-// 	return true
-// }
+	return ok
+}
 
 func (at *assetType) init(
 	s *site,
@@ -198,11 +217,11 @@ func (at *assetType) init(
 	at.doMin = doMin
 	at.min = min
 	at.verifyOrder = verifyOrder
-	at.havePaths = map[string]struct{}{}
+	at.pathsIdx = map[string]*orderedAsset{}
 }
 
 func (at *assetType) addToOrderCheck(srcPath string, ord []string) {
-	if len(ord) == 0 {
+	if len(ord) == 0 || !at.verifyOrder {
 		return
 	}
 
@@ -216,44 +235,80 @@ func (at *assetType) addToOrderCheck(srcPath string, ord []string) {
 	at.mtx.Unlock()
 }
 
-func (at *assetType) addPath(ord *[]string, path string) {
+func (at *assetType) addPath(prevAsset, path string) {
 	at.mtx.Lock()
 
-	if _, ok := at.havePaths[path]; !ok {
-		at.paths = append(at.paths, path)
-		at.havePaths[path] = struct{}{}
+	push := func(p string, oa *orderedAsset) {
+		if oa == nil {
+			oa = &orderedAsset{
+				path: p,
+			}
+		}
+		oa.i = len(at.paths)
+
+		at.paths = append(at.paths, oa)
+		at.pathsIdx[p] = oa
+	}
+
+	if oa, ok := at.pathsIdx[path]; !ok {
+		push(path, nil)
+	} else if prevAsset != "" {
+		// prevAsset must be in the list at this point, or things are not
+		// being accounted correctly
+		oap, ok := at.pathsIdx[prevAsset]
+		if !ok {
+			panic(fmt.Errorf("asset type %s inconsistent: %v does not contain %s",
+				at.which,
+				at.paths,
+				prevAsset))
+		}
+
+		// If the previous asset comes after the current asset, then kick the
+		// current to the back to maintain proper ordering
+		if oap.i > oa.i {
+			decs := at.paths[oa.i+1:]
+			at.paths = append(at.paths[:oa.i], decs...)
+
+			for _, oad := range decs {
+				oad.i--
+			}
+
+			push(path, oa)
+		}
 	}
 
 	// for i, oa := range at.paths {
-	// 	if i != oa.i {
-	// 		panic(fmt.Errorf("i mismatch at %d: got %d", i, oa.i))
+	// 	if at.pathsIdx[oa.path].i != i {
+	// 		panic(fmt.Errorf("mismatch at %s: %d (in map) != %d (in slice)",
+	// 			oa.path,
+	// 			at.pathsIdx[oa.path].i,
+	// 			i))
 	// 	}
 	// }
-
-	if ord != nil {
-		*ord = append(*ord, path)
-	}
 
 	at.mtx.Unlock()
 }
 
-// func (at *assetType) verifyOrdering(deps []string) (ok bool, failedAt string) {
-// 	if !at.verifyOrder {
-// 		return true, ""
-// 	}
+func (at *assetType) verifyOrdering() (ok bool, failedAt string) {
+	if !at.verifyOrder {
+		return true, ""
+	}
 
-// 	prev := 0
-// 	for _, dep := range deps {
-// 		oa := at.havePaths[dep]
-// 		if oa.i < prev {
-// 			return false, oa.path
-// 		}
+	for _, oc := range at.orderChecks {
+		prev := 0
 
-// 		prev = oa.i
-// 	}
+		for _, f := range oc.files {
+			oa := at.pathsIdx[f]
+			if oa.i < prev {
+				return false, oc.srcPath
+			}
 
-// 	return true, ""
-// }
+			prev = oa.i
+		}
+	}
+
+	return true, ""
+}
 
 func (at *assetType) combine() (ok bool) {
 	if !at.doCombine {
@@ -278,8 +333,8 @@ func (at *assetType) combine() (ok bool) {
 
 	defer fa.Close()
 
-	for _, path := range at.paths {
-		f, err := os.Open(path)
+	for _, oa := range at.paths {
+		f, err := os.Open(oa.path)
 		if err != nil {
 			at.s.errs.add(dest, err)
 			return
@@ -289,15 +344,15 @@ func (at *assetType) combine() (ok bool) {
 		f.Close()
 
 		if err != nil {
-			at.s.errs.add(dest, fmt.Errorf("while copying %s: %v", path, err))
+			at.s.errs.add(dest, fmt.Errorf("while copying %s: %v", oa.path, err))
 			return
 		}
 	}
 
 	// Clear so that minificaton gets the right file
 	at.paths = nil
-	at.havePaths = map[string]struct{}{}
-	at.addPath(nil, dest)
+	at.pathsIdx = map[string]*orderedAsset{}
+	at.addPath("", dest)
 
 	err = fa.Close()
 	if err != nil {
@@ -319,10 +374,26 @@ func (at *assetType) minify() {
 		return
 	}
 
-	for _, path := range at.paths {
-		err := at.min.Minify(path)
+	for _, oa := range at.paths {
+		err := at.min.Minify(oa.path)
 		if err != nil {
-			at.s.errs.add(path, fmt.Errorf("minification failed: %v", err))
+			at.s.errs.add(oa.path, fmt.Errorf("minification failed: %v", err))
 		}
+	}
+}
+
+func (ao *assetOrdering) assimilate(a *assets, oo assetOrdering) {
+	if !ao.isPage || oo.isPage {
+		ao.js = append(ao.js, oo.js...)
+		ao.css = append(ao.css, oo.css...)
+		return
+	}
+
+	for _, js := range oo.js {
+		a.addByType(ao, contJS, js)
+	}
+
+	for _, css := range oo.css {
+		a.addByType(ao, contCSS, css)
 	}
 }

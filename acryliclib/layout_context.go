@@ -2,7 +2,6 @@ package acryliclib
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
 	"time"
 
@@ -66,15 +65,9 @@ func (lctx layoutContext) forLayout(assetOrd *assetOrdering) p2.Context {
 }
 
 func (lctx layoutContext) forPage() p2.Context {
-	return p2.Context{
-		privSiteKey: lctx.s,
-		contentKey:  lctx.c,
-		assetOrdKey: &lctx.c.assetOrd,
-		isPageKey:   true,
-		// TODO(astone): need to restrict Site.Content.Find() in pages, too
-		"Site": lctx.ls,
-		"Page": layoutRestrictedPageCtx{lctx.lp},
-	}
+	ctx := lctx.forLayout(&lctx.c.assetOrd)
+	ctx[isPageKey] = true
+	return ctx
 }
 
 func newLayoutSiteCtx(s *site) *layoutSiteCtx {
@@ -115,26 +108,27 @@ func newLayoutPageCtx(s *site, c *content) *layoutPageCtx {
 	return &ctx
 }
 
-func (ctx *layoutPageCtx) Summary() *p2.Value {
+func (ctx *layoutPageCtx) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	return p2.AsValue(ctx.c.getSummary())
 }
 
-func (ctx *layoutPageCtx) Content() *p2.Value {
-	return p2.AsSafeValue(ctx.c.gen.getContent())
-}
+func (ctx *layoutPageCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+	if _, ok := tplP2Ctx.Public[isPageKey]; ok {
+		ctx.s.errs.add(ctx.c.f.srcPath,
+			// TODO(astone): add link to docs page explaining why
+			errors.New("content of other pages may not be included in other content"))
+		return p2.AsValue("")
+	}
 
-func (ctx *layoutRestrictedPageCtx) Summary() *p2.Value {
-	ctx.s.errs.add(ctx.c.f.srcPath,
-		// TODO(astone): add link to docs page explaining why
-		errors.New("summaries of other pages may not be included in content"))
-	return p2.AsValue("")
-}
+	// Generate content first: this causes assets to be populated and
+	// everything to be setup; once this returns, the content is ready for
+	// use.
+	html := ctx.c.gen.getContent()
 
-func (ctx *layoutRestrictedPageCtx) Content() *p2.Value {
-	ctx.s.errs.add(ctx.c.f.srcPath,
-		// TODO(astone): add link to docs page explaining why
-		errors.New("content of other pages may not be included in content"))
-	return p2.AsValue("")
+	ao := tplP2Ctx.Public[assetOrdKey].(*assetOrdering)
+	ao.assimilate(&ctx.s.assets, ctx.c.assetOrd)
+
+	return p2.AsSafeValue(html)
 }
 
 func (t ctxTime) String() string {

@@ -53,3 +53,12 @@ func sToTitle(title string) string {
 
 	return strings.Join(parts, " ")
 }
+
+func ssLast(ss []string) string {
+	l := len(ss)
+	if l == 0 {
+		return ""
+	}
+
+	return ss[l-1]
+}

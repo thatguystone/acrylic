@@ -64,7 +64,9 @@ func (gp *contentGenPage) generate(content []byte, dstPath string, s *site, c *c
 	defer f.Close()
 
 	lo := s.findLayout(c.cpath, c.f.layoutName, true)
-	assetOrd := assetOrdering{}
+	assetOrd := assetOrdering{
+		isPage: true,
+	}
 
 	err = lo.execute(c.loutCtx.forLayout(&assetOrd), f)
 	if err != nil {

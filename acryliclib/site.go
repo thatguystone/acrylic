@@ -395,12 +395,12 @@ func (s *site) walkRoot(
 				}
 
 				if f.isMeta() {
-					return nil
+					continue
 				}
 
 				if f.isIndex() {
 					indexes = append(indexes, f)
-					return nil
+					continue
 				}
 
 				err = fCb(f)

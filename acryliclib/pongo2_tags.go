@@ -121,7 +121,7 @@ func (n assetTagNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2
 
 		path = c.gen.generatePage()
 		relPath := c.relDest(path)
-		err = s.assets.addAndWrite(assetOrd, path, relPath, w)
+		err = s.assets.addToOrderingAndWrite(assetOrd, path, relPath, w)
 
 		if err != nil {
 			s.errs.add(pc.f.srcPath, fmt.Errorf("%s: %v", n.what, err))

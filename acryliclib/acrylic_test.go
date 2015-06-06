@@ -12,8 +12,9 @@ import (
 )
 
 type testAcrylic struct {
-	a   assert.A
-	cfg Config
+	a       assert.A
+	cfg     Config
+	isBench bool
 }
 
 type testFile struct {
@@ -58,11 +59,11 @@ var (
 		},
 		testFile{
 			p:  "content/blog/post1.js",
-			sc: "(post 1 js stuff!)",
+			sc: "(post 1 js)",
 		},
 		testFile{
 			p:  "content/blog/post1.css",
-			sc: "(post 1 css stuff!)",
+			sc: "(post 1 css)",
 		},
 		testFile{
 			p: "content/blog/post2.md",
@@ -74,11 +75,11 @@ var (
 		},
 		testFile{
 			p:  "content/blog/post2.js",
-			sc: "(post 2 js stuff!)",
+			sc: "(post 2 js)",
 		},
 		testFile{
 			p:  "content/blog/post2.css",
-			sc: "(post 2 css stuff!)",
+			sc: "(post 2 css)",
 		},
 		testFile{
 			p: "layouts/blog/_single.html",
@@ -95,11 +96,11 @@ var (
 		},
 		testFile{
 			p:  "layouts/blog/layout.js",
-			sc: "(layout js!)",
+			sc: "(layout js)",
 		},
 		testFile{
 			p:  "layouts/blog/layout.css",
-			sc: "(layout css!)",
+			sc: "(layout css)",
 		},
 		testFile{
 			p:  "layouts/blog/layout2.js",
@@ -135,7 +136,7 @@ func testConfig() *Config {
 	return cfg
 }
 
-func testNew(t *testing.T, build bool, cfg *Config, files ...testFile) *testAcrylic {
+func testNew(t testing.TB, build bool, cfg *Config, files ...testFile) *testAcrylic {
 	if cfg == nil {
 		cfg = testConfig()
 	}
@@ -146,7 +147,11 @@ func testNew(t *testing.T, build bool, cfg *Config, files ...testFile) *testAcry
 	}
 
 	tt.createFiles(files)
-	tt.a.Logf("Initial files:\n%s", tt.tree(""))
+
+	_, tt.isBench = t.(*testing.B)
+	if !tt.isBench {
+		tt.a.Logf("Initial files:\n%s", tt.tree(""))
+	}
 
 	if build {
 		tt.build()
@@ -159,7 +164,9 @@ func (tt *testAcrylic) build() BuildStats {
 	stats, errs := Build(tt.cfg)
 	tt.a.MustEqual(0, len(errs), "failed to build site; errs=%v", errs)
 
-	tt.a.Logf("Generated files:\n%s", tt.tree(tt.cfg.PublicDir))
+	if !tt.isBench {
+		tt.a.Logf("Generated files:\n%s", tt.tree(tt.cfg.PublicDir))
+	}
 
 	return stats
 }
@@ -276,6 +283,11 @@ func TestBasicSite(t *testing.T) {
 		`(layout 2 js!)`)
 	tt.contents("public/static/css/layout/blog/layout2.css",
 		`(layout 2 css!)`)
+}
+
+func TestIndexPagesInDirs(t *testing.T) {
+	t.Parallel()
+	// TODO(astone): test case for right layout chosen for an index.md/meta in a dir
 }
 
 func TestContentAutoMetas(t *testing.T) {
@@ -446,15 +458,15 @@ func TestSiteAssetCombining(t *testing.T) {
 		"Blog layout:<h1>post 2</h1><p>post 2</p><img src=../static/img/layout/blog/img.png style=width:1px;height:1px;><script src=../../static/all.js></script><link rel=stylesheet href=../../static/all.css>")
 
 	fc := tt.readFile("public/static/all.js")
-	tt.a.Equal(1, strings.Count(fc, "(layout js!)"), "js should only appear once")
-	tt.a.Equal(1, strings.Count(fc, "(layout 2 js!)"), "js should only appear once")
-	tt.a.Equal(1, strings.Count(fc, "(post 1 js stuff!)"), "js should only appear once")
-	tt.a.Equal(1, strings.Count(fc, "(post 2 js stuff!)"), "js should only appear once")
-
 	tt.a.Logf("%s", fc)
 
-	lojs := strings.Index(fc, "(layout js!)")
-	pjs := strings.Index(fc, "(post 1 js stuff!)")
+	tt.a.Equal(1, strings.Count(fc, "(layout js)"), "js should only appear once")
+	tt.a.Equal(1, strings.Count(fc, "(layout 2 js!)"), "js should only appear once")
+	tt.a.Equal(1, strings.Count(fc, "(post 1 js)"), "js should only appear once")
+	tt.a.Equal(1, strings.Count(fc, "(post 2 js)"), "js should only appear once")
+
+	lojs := strings.Index(fc, "(layout js)")
+	pjs := strings.Index(fc, "(post 1 js)")
 	lo2js := strings.Index(fc, "(layout 2 js!)")
 	tt.a.True(lojs < pjs, "layout js should be before post js: %d < %d", lojs, pjs)
 	tt.a.True(pjs < lo2js, "post js should be before layout js2: %d < %d", pjs, lo2js)
@@ -503,4 +515,22 @@ func TestSiteAssetsOutOfOrder(t *testing.T) {
 func TestSiteAssetMinify(t *testing.T) {
 	t.Parallel()
 	// TODO(astone): asset minification
+}
+
+func BenchmarkEmptySite(b *testing.B) {
+	tt := testNew(b, false, nil)
+	defer tt.cleanup()
+
+	for i := 0; i < b.N; i++ {
+		tt.build()
+	}
+}
+
+func BenchmarkBasicSite(b *testing.B) {
+	tt := testNew(b, false, nil, basicSite...)
+	defer tt.cleanup()
+
+	for i := 0; i < b.N; i++ {
+		tt.build()
+	}
 }
