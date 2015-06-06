@@ -15,7 +15,9 @@ type contentGener interface {
 	render(s *site, c *content) (content []byte, err error)
 
 	// Generate the full page, optionally writing the file yourself
-	generate(content []byte, dstPath string, s *site, c *content) (wroteOwnFile bool, err error)
+	generate(content []byte, dstPath string, s *site, c *content) (
+		wroteOwnFile bool,
+		err error)
 }
 
 type contentGenWrapper struct {

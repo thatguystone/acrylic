@@ -12,9 +12,10 @@ import (
 )
 
 type testAcrylic struct {
-	a       assert.A
-	cfg     Config
-	isBench bool
+	a        assert.A
+	cfg      Config
+	lastSite *site
+	isBench  bool
 }
 
 type testFile struct {
@@ -161,12 +162,14 @@ func testNew(t testing.TB, build bool, cfg *Config, files ...testFile) *testAcry
 }
 
 func (tt *testAcrylic) build() BuildStats {
-	stats, errs := Build(tt.cfg)
+	site, stats, errs := build(tt.cfg)
 	tt.a.MustEqual(0, len(errs), "failed to build site; errs=%v", errs)
 
 	if !tt.isBench {
 		tt.a.Logf("Generated files:\n%s", tt.tree(tt.cfg.PublicDir))
 	}
+
+	tt.lastSite = site
 
 	return stats
 }

@@ -13,6 +13,11 @@ type Config struct {
 	// Date format to use when printing dates
 	DateFormat string `yaml:"dateFormat"`
 
+	// At least how many words to include in content summaries. Summaries are
+	// split on sentences, so a sentence that crosses this boundary will be
+	// included in the summary.
+	SummaryWords int
+
 	FileMode   os.FileMode // For generated content. Defaults to 0640.
 	DataDir    string      `yaml:"dataDir"`    // Defaults to "data"
 	ContentDir string      `yaml:"contentDir"` // Defaults to "content"
@@ -79,6 +84,10 @@ func (cfg *Config) setDefaults() {
 
 	if cfg.DateFormat == "" {
 		cfg.DateFormat = sDateFormat
+	}
+
+	if cfg.SummaryWords == 0 {
+		cfg.SummaryWords = 70
 	}
 
 	if cfg.ContentDir == "" {

@@ -29,6 +29,15 @@ type content struct {
 	loutCtx  layoutContext
 	gen      contentGenWrapper
 	assetOrd assetOrdering
+	deets    contentDetails
+}
+
+type contentDetails struct {
+	mtx            sync.Mutex
+	analyzed       bool
+	summary        string
+	wordCount      int
+	fuzzyWordCount int
 }
 
 const (
@@ -233,9 +242,32 @@ func (c *content) processMeta(m []byte, isMetaFile bool) error {
 	return c.meta.merge(m)
 }
 
+func (c *content) analyze() {
+	if c.deets.analyzed {
+		return
+	}
+
+	ca := contentAnalyze{
+		cfg:   c.cs.s.cfg,
+		gen:   c.gen,
+		deets: &c.deets,
+	}
+	ca.analyze()
+}
+
 func (c *content) getSummary() string {
-	// TODO(astone): implement summary getting
-	return ""
+	if len(c.deets.summary) > 0 {
+		return c.deets.summary
+	}
+
+	sum := c.meta.summary()
+	if len(sum) > 0 {
+		c.deets.summary = sum
+		return sum
+	}
+
+	c.analyze()
+	return c.deets.summary
 }
 
 func (c *content) relDest(otherPath string) string {

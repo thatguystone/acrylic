@@ -17,14 +17,22 @@ type BuildStats struct {
 }
 
 // Build builds the site specified by cfg
-func Build(cfg Config) (BuildStats, Errors) {
+func build(cfg Config) (s *site, stats BuildStats, errs Errors) {
 	cfg.setDefaults()
 
 	startTime := time.Now()
-	s, errs := newSite(&cfg).build()
-	s.setRunTime(time.Now().Sub(startTime))
 
-	return s, errs
+	s = newSite(&cfg)
+	stats, errs = s.build()
+
+	stats.setRunTime(time.Now().Sub(startTime))
+
+	return
+}
+
+func Build(cfg Config) (BuildStats, Errors) {
+	_, stats, errs := build(cfg)
+	return stats, errs
 }
 
 func (bs *BuildStats) setRunTime(d time.Duration) {

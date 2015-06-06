@@ -21,12 +21,11 @@ type layoutSiteCtx struct {
 }
 
 type layoutPageCtx struct {
-	s       *site
-	c       *content
-	Title   string
-	Date    ctxTime
-	summary string
-	Meta    *meta
+	s     *site
+	c     *content
+	Title string
+	Date  ctxTime
+	Meta  *meta
 }
 
 type layoutRestrictedPageCtx struct {
@@ -102,8 +101,6 @@ func newLayoutPageCtx(s *site, c *content) *layoutPageCtx {
 	if date, ok := c.meta.date(); ok {
 		ctx.Date.Time = date
 	}
-
-	ctx.summary = c.meta.summary()
 
 	return &ctx
 }
