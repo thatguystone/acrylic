@@ -26,7 +26,7 @@ type content struct {
 	cpath    string
 	metaEnd  int
 	meta     *meta
-	loutCtx  layoutContext
+	loutCtx  *layoutContentCtx
 	gen      contentGenWrapper
 	assetOrd assetOrdering
 	deets    contentDetails
@@ -97,7 +97,7 @@ func (cs *contents) add(f file) error {
 		return err
 	}
 
-	c.loutCtx = newLayoutCtx(cs.s, c)
+	c.loutCtx = newLayoutContentCtx(cs.s, c)
 
 	return nil
 }

@@ -21,8 +21,8 @@ type site struct {
 	d      data
 	l      map[string]*layout
 	assets assets
+	lsctx  *layoutSiteCtx
 
-	stage     buildStage
 	wg        sync.WaitGroup
 	contentCh chan file
 
@@ -31,16 +31,6 @@ type site struct {
 }
 
 type data map[string]interface{}
-
-type buildStage int
-
-const (
-	// Rendering the content
-	buildContent buildStage = iota
-
-	// Generating files
-	buildFiles
-)
 
 var (
 	reservedPaths = []string{
@@ -71,6 +61,8 @@ func newSite(cfg *Config) *site {
 		min: minify.New(),
 		l:   map[string]*layout{},
 	}
+
+	s.lsctx = newLayoutSiteCtx(s)
 
 	s.cs.init(s)
 	s.assets.init(s)

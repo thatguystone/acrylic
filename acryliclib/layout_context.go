@@ -3,33 +3,25 @@ package acryliclib
 import (
 	"errors"
 	"path/filepath"
+	"sync"
 	"time"
 
 	p2 "github.com/flosch/pongo2"
 )
 
-type layoutContext struct {
-	s *site
-	c *content
-
-	ls *layoutSiteCtx
-	lp *layoutPageCtx
-}
-
 type layoutSiteCtx struct {
-	Name string
+	s       *site
+	mtx     sync.Mutex
+	Name    string
+	Content []*layoutContentCtx
 }
 
-type layoutPageCtx struct {
+type layoutContentCtx struct {
 	s     *site
 	c     *content
 	Title string
 	Date  ctxTime
 	Meta  *meta
-}
-
-type layoutRestrictedPageCtx struct {
-	*layoutPageCtx
 }
 
 type ctxTime struct {
@@ -44,39 +36,24 @@ const (
 	privSiteKey = "__acrylicSite__"
 )
 
-func newLayoutCtx(s *site, c *content) layoutContext {
-	return layoutContext{
-		s:  s,
-		c:  c,
-		ls: newLayoutSiteCtx(s),
-		lp: newLayoutPageCtx(s, c),
-	}
-}
-
-func (lctx layoutContext) forLayout(assetOrd *assetOrdering) p2.Context {
-	return p2.Context{
-		privSiteKey: lctx.s,
-		contentKey:  lctx.c,
-		assetOrdKey: assetOrd,
-		"Site":      lctx.ls,
-		"Page":      lctx.lp,
-	}
-}
-
-func (lctx layoutContext) forPage() p2.Context {
-	ctx := lctx.forLayout(&lctx.c.assetOrd)
-	ctx[isPageKey] = true
-	return ctx
-}
-
 func newLayoutSiteCtx(s *site) *layoutSiteCtx {
-	ctx := layoutSiteCtx{}
+	ctx := layoutSiteCtx{
+		s: s,
+	}
 
 	return &ctx
 }
 
-func newLayoutPageCtx(s *site, c *content) *layoutPageCtx {
-	ctx := layoutPageCtx{
+func (lsctx *layoutSiteCtx) addContentCtx(lcctx *layoutContentCtx) {
+	lsctx.mtx.Lock()
+
+	lsctx.Content = append(lsctx.Content, lcctx)
+
+	lsctx.mtx.Unlock()
+}
+
+func newLayoutContentCtx(s *site, c *content) *layoutContentCtx {
+	ctx := &layoutContentCtx{
 		s:    s,
 		c:    c,
 		Meta: c.meta,
@@ -102,14 +79,32 @@ func newLayoutPageCtx(s *site, c *content) *layoutPageCtx {
 		ctx.Date.Time = date
 	}
 
-	return &ctx
+	s.lsctx.addContentCtx(ctx)
+
+	return ctx
 }
 
-func (ctx *layoutPageCtx) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+func (lcctx *layoutContentCtx) forLayout(assetOrd *assetOrdering) p2.Context {
+	return p2.Context{
+		privSiteKey: lcctx.s,
+		contentKey:  lcctx.c,
+		assetOrdKey: assetOrd,
+		"Site":      lcctx.s.lsctx,
+		"Page":      lcctx,
+	}
+}
+
+func (lcctx *layoutContentCtx) forPage() p2.Context {
+	ctx := lcctx.forLayout(&lcctx.c.assetOrd)
+	ctx[isPageKey] = true
+	return ctx
+}
+
+func (ctx *layoutContentCtx) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	return p2.AsValue(ctx.c.getSummary())
 }
 
-func (ctx *layoutPageCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+func (ctx *layoutContentCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	if _, ok := tplP2Ctx.Public[isPageKey]; ok {
 		ctx.s.errs.add(ctx.c.f.srcPath,
 			// TODO(astone): add link to docs page explaining why
@@ -126,6 +121,10 @@ func (ctx *layoutPageCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	ao.assimilate(&ctx.s.assets, ctx.c.assetOrd)
 
 	return p2.AsSafeValue(html)
+}
+
+func (ctx *layoutContentCtx) IsActive(tplP2Ctx *p2.ExecutionContext) bool {
+	return false
 }
 
 func (t ctxTime) String() string {
