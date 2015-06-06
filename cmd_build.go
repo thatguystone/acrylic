@@ -31,13 +31,15 @@ func cmdBuild(cfg Config) error {
 		stats.Duration *= time.Millisecond
 	}
 
-	log.Printf("Site built!")
-	log.Printf("    Pages: %d", stats.Pages)
-	log.Printf("    JS:    %d", stats.JS)
-	log.Printf("    CSS:   %d", stats.CSS)
-	log.Printf("    Imgs:  %d", stats.Imgs)
-	log.Printf("    Blobs: %d", stats.Blobs)
-	log.Printf("    Took:  %v", stats.Duration)
+	if !cfg.hideStats {
+		log.Printf("Site built!")
+		log.Printf("    Pages: %d", stats.Pages)
+		log.Printf("    JS:    %d", stats.JS)
+		log.Printf("    CSS:   %d", stats.CSS)
+		log.Printf("    Imgs:  %d", stats.Imgs)
+		log.Printf("    Blobs: %d", stats.Blobs)
+		log.Printf("    Took:  %v", stats.Duration)
+	}
 
 	err = os.Chdir(cwd)
 	if err != nil {

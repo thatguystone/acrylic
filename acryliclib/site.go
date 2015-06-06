@@ -22,6 +22,7 @@ type site struct {
 	l      map[string]*layout
 	assets assets
 
+	stage     buildStage
 	wg        sync.WaitGroup
 	contentCh chan file
 
@@ -30,6 +31,16 @@ type site struct {
 }
 
 type data map[string]interface{}
+
+type buildStage int
+
+const (
+	// Rendering the content
+	buildContent buildStage = iota
+
+	// Generating files
+	buildFiles
+)
 
 var (
 	reservedPaths = []string{
@@ -317,23 +328,18 @@ func (s *site) loadData() {
 func (s *site) generate() {
 	wg := sync.WaitGroup{}
 
-	ch := make(chan contentGenPage, s.cfg.Jobs*2)
+	ch := make(chan *content, s.cfg.Jobs*2)
 
 	generator := func() {
 		defer wg.Done()
 
-		for gp := range ch {
-			c := gp.c
-
+		for c := range ch {
 			// Don't generate layout and theme pages unless explicitly requested
 			if res := fPathCheckFor(c.f.dstPath, allReservedPaths...); res != "" {
 				continue
 			}
 
-			_, err := gp.generatePage()
-			if err != nil {
-				s.errs.add(c.f.srcPath, err)
-			}
+			c.gen.generatePage()
 		}
 	}
 
@@ -343,9 +349,8 @@ func (s *site) generate() {
 	}
 
 	for _, c := range s.cs.srcs {
-		gp, ok := c.gen.(contentGenPage)
-		if ok {
-			ch <- gp
+		if c.gen.is(contPage) {
+			ch <- c
 		}
 	}
 

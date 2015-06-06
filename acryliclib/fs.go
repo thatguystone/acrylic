@@ -108,7 +108,7 @@ func fDropRoot(root, path string) string {
 	return path
 }
 
-func fDestChanged(src, dst string) bool {
+func fSrcChanged(src, dst string) bool {
 	sstat, serr := os.Stat(src)
 	dstat, derr := os.Stat(dst)
 	if serr != nil || derr != nil {

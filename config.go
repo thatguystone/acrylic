@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Config adds command configuration options to acrylic's build options.
 type Config struct {
 	acryliclib.Config
 
@@ -19,7 +20,8 @@ type Config struct {
 		NoWatch    bool
 	}
 
-	path string
+	path      string
+	hideStats bool
 }
 
 func loadConfig(cfgFile string) (cfg Config, err error) {

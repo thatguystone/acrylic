@@ -77,19 +77,11 @@ func (n imgTagNodeBase) getImg(ctx *p2.ExecutionContext) (img img, err *p2.Error
 			ext = "." + ext
 		}
 
-		okExt := false
-		for _, e := range imgExts {
-			if ext == e {
-				okExt = true
-				break
-			}
-		}
-
-		if !okExt {
+		if !imgExts[ext] {
 			err = ctx.Error(fmt.Sprintf(
 				"img: %s is an invalid image extension, must be one of %v",
 				ext,
-				imgExts),
+				imgExtsSlice),
 				nil)
 			return
 		}
@@ -182,15 +174,15 @@ func (n imgSrcTagNode) Execute(
 		return nil
 	}
 
-	cgi, ok := ic.gen.(contentGenImg)
-	if !ok {
+	if !ic.gen.is(contImg) {
 		s.errs.add(currFile,
 			fmt.Errorf("img: %s is not an image, have %s",
 				img.src,
-				ic.gen.(contentGener).humanName()))
+				ic.gen.humanName()))
 		return nil
 	}
 
+	cgi := ic.gen.getGener().(*contentGenImg)
 	imgW, imgH, path, err := cgi.scale(img)
 	if err != nil {
 		s.errs.add(currFile, fmt.Errorf("img: failed to scale %s: %v", img.src, err))
@@ -258,7 +250,7 @@ func imgParseArgs(d *p2.Parser, s *p2.Token, args *p2.Parser) (base imgTagNodeBa
 		t := args.MatchType(p2.TokenIdentifier)
 		if t == nil {
 			err = args.Error(
-				fmt.Sprintf("img: unexpected token: expected %s, got %d",
+				fmt.Sprintf("img: unexpected token: expected %d, got %d",
 					p2.TokenIdentifier,
 					args.Current().Typ),
 				t)

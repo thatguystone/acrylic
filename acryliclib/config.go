@@ -5,9 +5,13 @@ import (
 	"runtime"
 )
 
+// Config controls all aspects of how the site is built.
 type Config struct {
 	Root  string // Where the site files live, relative to current directory
 	Theme string // Name of the theme to use
+
+	// Date format to use when printing dates
+	DateFormat string `yaml:"dateFormat"`
 
 	FileMode   os.FileMode // For generated content. Defaults to 0640.
 	DataDir    string      `yaml:"dataDir"`    // Defaults to "data"
@@ -61,7 +65,7 @@ type Config struct {
 	UnorderedJS  bool
 	UnorderedCSS bool
 
-	Jobs uint // How many jobs may be run in parallel. Defaults to GOMAXPROCS.
+	Jobs uint // How many jobs may be run in parallel. Defaults to GOMAXPROCS*2.
 }
 
 func (cfg *Config) setDefaults() {
@@ -71,6 +75,10 @@ func (cfg *Config) setDefaults() {
 
 	if cfg.DataDir == "" {
 		cfg.DataDir = "data"
+	}
+
+	if cfg.DateFormat == "" {
+		cfg.DateFormat = sDateFormat
 	}
 
 	if cfg.ContentDir == "" {
@@ -94,6 +102,6 @@ func (cfg *Config) setDefaults() {
 	}
 
 	if cfg.Jobs == 0 {
-		cfg.Jobs = uint(runtime.GOMAXPROCS(-1))
+		cfg.Jobs = uint(runtime.GOMAXPROCS(-1)) * 2
 	}
 }

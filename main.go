@@ -83,7 +83,9 @@ func (actions) benchmark(c *cli.Context) {
 	defer f.Close()
 	defer pprof.StopCPUProfile()
 
+	cfg.hideStats = true
 	times := c.Int("times")
+
 	for i := 0; i < times; i++ {
 		err := cmdBuild(cfg)
 		if err != nil {

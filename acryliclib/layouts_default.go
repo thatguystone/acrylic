@@ -7,7 +7,7 @@ var (
 			`height:{{ h }}px;` +
 			`">`,
 		"_list":   "<not yet implemented>",
-		"_single": "{% content %}",
+		"_single": "{{ Page.Content }}",
 		"_index":  "It works! Now go add a layout for _index.",
 	}
 )

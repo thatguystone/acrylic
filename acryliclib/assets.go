@@ -84,16 +84,16 @@ func (a *assets) init(s *site) {
 		singleCSS && !s.cfg.UnorderedCSS)
 }
 
-func (a *assets) getType(atype string) *assetType {
-	switch atype {
-	case "js":
+func (a *assets) getType(contType contentType) *assetType {
+	switch contType {
+	case contJS:
 		return &a.js
 
-	case "css":
+	case contCSS:
 		return &a.css
 	}
 
-	panic(fmt.Errorf("unrecognized asset type: %s", atype))
+	panic(fmt.Errorf("assets with tag content type %d not managed", contType))
 }
 
 func (a *assets) writeTag(c *content, dstPath, relPath string, w io.Writer) (err error) {

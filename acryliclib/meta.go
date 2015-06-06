@@ -1,6 +1,10 @@
 package acryliclib
 
-import "gopkg.in/yaml.v2"
+import (
+	"time"
+
+	"gopkg.in/yaml.v2"
+)
 
 type meta map[string]interface{}
 
@@ -12,17 +16,22 @@ func (m *meta) has() bool {
 	return len(*m) > 0
 }
 
-func (m meta) layoutName() string {
-	name, ok := m["layoutName"].(string)
+func (m meta) getString(k string) string {
+	s, ok := m[k].(string)
 	if !ok {
 		return ""
 	}
 
-	return name
+	return s
 }
 
-func (m meta) publish() bool {
-	b, ok := m["publish"].(bool)
+func (m meta) getDate(k string) (time.Time, bool) {
+	s := m.getString(k)
+	return sToDate(s)
+}
+
+func (m meta) getBool(k string) bool {
+	b, ok := m[k].(bool)
 	if !ok {
 		return false
 	}
@@ -30,5 +39,22 @@ func (m meta) publish() bool {
 	return b
 }
 
-// TODO(astone): content titles
-// TODO(astone): content dates, possibly from titles
+func (m meta) title() string {
+	return m.getString("title")
+}
+
+func (m meta) date() (time.Time, bool) {
+	return m.getDate("date")
+}
+
+func (m meta) summary() string {
+	return m.getString("summary")
+}
+
+func (m meta) layoutName() string {
+	return m.getString("layoutName")
+}
+
+func (m meta) publish() bool {
+	return m.getBool("publish")
+}

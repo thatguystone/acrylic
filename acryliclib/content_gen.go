@@ -1,232 +1,159 @@
 package acryliclib
 
-import "bytes"
-
-type contentGener interface {
-	// Attempt to get a content generator from this guy, if it handles it.
-	getGenerator(c *content, ext string) interface{}
-
-	// Generates the page and return its file path.
-	generatePage() (string, error)
-
-	// Name of this content, as a human would know it
-	humanName() string
-}
-
-type contentGenBase struct {
-	c    *content
-	rend renderer
-}
-
-type contentGenAssetBase struct {
-	contentGenBase
-	assetDir string
-	ext      string
-	render   bool
-}
-
-type contentGenPage struct {
-	contentGenBase
-}
-
-type contentGenJS struct {
-	contentGenAssetBase
-}
-
-type contentGenCSS struct {
-	contentGenAssetBase
-}
-
-type contentGenPassthru struct {
-	c *content
-}
-
-var (
-	generators = []contentGener{
-		contentGenPage{},
-		contentGenJS{},
-		contentGenCSS{},
-		contentGenImg{},
-		contentGenPassthru{},
-	}
-
-	contentPageRends = []renderer{
-		renderMarkdown{},
-		renderHTML{},
-	}
-
-	contentJSRends = []renderer{
-		renderCoffee{},
-		renderDart{},
-		renderJS{},
-	}
-
-	contentCSSRends = []renderer{
-		renderLess{},
-		renderSass{},
-		renderCSS{},
-	}
+import (
+	"fmt"
+	"io"
 )
 
-func (contentGenBase) findRenderer(
-	c *content,
-	rends []renderer,
-	ext string) (contentGenBase, bool) {
+type contentGenGetter func(s *site, c *content, ext string) (contentGener, contentType)
 
-	for _, r := range rends {
-		if r.renders(ext) {
-			b := contentGenBase{
-				c:    c,
-				rend: r,
+type contentGener interface {
+	// Claim the file you're going to output
+	claimDest(c *content) (dstPath string, alreadyClaimed bool, err error)
+
+	// Render the content itself, not the full page
+	render(s *site, c *content) (content []byte, err error)
+
+	// Generate the full page, optionally writing the file yourself
+	generate(content []byte, dstPath string, s *site, c *content) (wroteOwnFile bool, err error)
+}
+
+type contentGenWrapper struct {
+	s            *site
+	c            *content
+	gener        contentGener
+	contType     contentType
+	content      string
+	contentGened chan struct{}
+}
+
+type contentType int
+
+const (
+	contInvalid contentType = iota
+	contPage
+	contJS
+	contCSS
+	contImg
+	contBlob
+)
+
+var genGetters = []contentGenGetter{
+	getContentPageGener,
+	getContentJSGener,
+	getContentCSSGener,
+	getContentImgGener,
+	getBlobGener,
+}
+
+func getContentGener(s *site, c *content, ext string) contentGenWrapper {
+	for _, gg := range genGetters {
+		contentGener, contType := gg(s, c, ext)
+		if contentGener != nil {
+			return contentGenWrapper{
+				s:            s,
+				c:            c,
+				gener:        contentGener,
+				contType:     contType,
+				contentGened: make(chan struct{}),
 			}
-
-			return b, true
 		}
 	}
 
-	return contentGenBase{}, false
+	panic(fmt.Errorf("no content generator found for %s", ext))
 }
 
-func (gp contentGenPage) getGenerator(c *content, ext string) interface{} {
-	b, ok := gp.findRenderer(c, contentPageRends, ext)
-	if !ok {
-		return nil
-	}
-
-	return contentGenPage{b}
+// An interface, ready for type hurling
+func (gw *contentGenWrapper) getGener() interface{} {
+	return gw.gener
 }
 
-func (gp contentGenPage) generatePage() (string, error) {
-	c := gp.c
-	s := c.cs.s
-
-	s.stats.addPage()
-
-	dstPath, alreadyClaimed, err := c.claimDest(".html")
-	if alreadyClaimed || err != nil {
-		return dstPath, err
-	}
-
-	f, err := s.fCreate(dstPath)
+func (gw *contentGenWrapper) generatePage() (dstPath string) {
+	dstPath, alreadyClaimed, err := gw.gener.claimDest(gw.c)
 	if err != nil {
-		return "", err
+		gw.s.errs.add(gw.c.f.srcPath, err)
+		return
+	}
+
+	if alreadyClaimed {
+		return
+	}
+
+	content, err := gw.gener.render(gw.s, gw.c)
+
+	if err == nil {
+		gw.content = string(content)
+		close(gw.contentGened)
+
+		wroteOwnFile := false
+		wroteOwnFile, err = gw.gener.generate(content, dstPath, gw.s, gw.c)
+
+		if err == nil && !wroteOwnFile {
+			err = gw.writeFile(dstPath, content)
+		}
+	} else {
+		close(gw.contentGened)
+	}
+
+	if err != nil {
+		gw.s.errs.add(gw.c.f.srcPath, err)
+		return
+	}
+
+	return
+}
+func (gw *contentGenWrapper) getContent() string {
+	if len(gw.content) == 0 {
+		gw.generatePage()
+		<-gw.contentGened
+	}
+
+	return gw.content
+}
+
+func (gw *contentGenWrapper) is(contType contentType) bool {
+	return gw.contType == contType
+}
+
+func (gw *contentGenWrapper) humanName() string {
+	return gw.contType.String()
+}
+
+func (gw *contentGenWrapper) writeFile(dstPath string, content []byte) (err error) {
+	f, err := gw.s.fCreate(dstPath)
+	if err != nil {
+		return
 	}
 
 	defer f.Close()
 
-	lo := s.findLayout(c.cpath, c.f.layoutName, true)
-	return dstPath, lo.execute(c.tplContext, f)
-}
-
-func (contentGenPage) humanName() string {
-	return "page"
-}
-
-func (gjs contentGenJS) getGenerator(c *content, ext string) interface{} {
-	b, ok := gjs.findRenderer(c, contentJSRends, ext)
-	if !ok {
-		return nil
-	}
-
-	cfg := c.cs.s.cfg
-	return contentGenJS{contentGenAssetBase{
-		contentGenBase: b,
-		assetDir:       "js",
-		ext:            ".js",
-		render:         cfg.RenderJS || b.rend.alwaysRender(),
-	}}
-}
-
-func (contentGenJS) humanName() string {
-	return "js"
-}
-
-func (gjs contentGenJS) generatePage() (string, error) {
-	gjs.c.cs.s.stats.addJS()
-	return gjs.contentGenAssetBase.generatePage()
-}
-
-func (gcss contentGenCSS) getGenerator(c *content, ext string) interface{} {
-	b, ok := gcss.findRenderer(c, contentCSSRends, ext)
-	if !ok {
-		return nil
-	}
-
-	cfg := c.cs.s.cfg
-	return contentGenCSS{contentGenAssetBase{
-		contentGenBase: b,
-		assetDir:       "css",
-		ext:            ".css",
-		render:         cfg.RenderCSS || b.rend.alwaysRender(),
-	}}
-}
-
-func (contentGenCSS) humanName() string {
-	return "css"
-}
-
-func (gcss contentGenCSS) generatePage() (string, error) {
-	gcss.c.cs.s.stats.addCSS()
-	return gcss.contentGenAssetBase.generatePage()
-}
-
-func (gab contentGenAssetBase) generatePage() (dstPath string, err error) {
-	c := gab.c
-	s := c.cs.s
-
-	alreadyClaimed := false
-	if gab.render {
-		dstPath, alreadyClaimed, err = c.claimStaticDest(gab.assetDir, gab.ext)
-	} else {
-		dstPath, alreadyClaimed, err = c.claimStaticDest(gab.assetDir, "")
-	}
-
-	if alreadyClaimed || err != nil {
-		return
-	}
-
-	b := bytes.Buffer{}
-
-	if c.meta.has() {
-		c.kickAssets = true
-		err = c.templatize(&b)
-	} else {
-		err = c.readAll(&b)
-	}
-
+	w, err := f.Write(content)
 	if err != nil {
 		return
 	}
 
-	rc := b.Bytes()
-	if gab.render {
-		rc, err = gab.rend.render(rc)
-	} else {
-		if !fDestChanged(c.f.srcPath, dstPath) {
-			return
-		}
-	}
-
-	if err != nil {
+	if w != len(content) {
+		err = io.ErrShortWrite
 		return
 	}
 
-	err = s.fWrite(dstPath, rc)
-
+	err = f.Close()
 	return
 }
 
-func (contentGenPassthru) getGenerator(c *content, ext string) interface{} {
-	return contentGenPassthru{
-		c: c,
+func (contType contentType) String() string {
+	switch contType {
+	case contPage:
+		return "page"
+	case contJS:
+		return "js"
+	case contCSS:
+		return "css"
+	case contImg:
+		return "image"
+	case contBlob:
+		return "binary blob"
 	}
-}
 
-func (gpt contentGenPassthru) generatePage() (string, error) {
-	gpt.c.cs.s.stats.addBlob()
-	return "", nil
-}
-
-func (contentGenPassthru) humanName() string {
-	return "binary blob"
+	panic(fmt.Errorf("unrecognized content type: %d", contType))
 }

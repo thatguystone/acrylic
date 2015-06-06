@@ -85,7 +85,7 @@ var (
 			sc: "{% js \"layout.js\" %}\n" +
 				"{% css \"layout.css\" %}\n" +
 				"<body>" +
-				"Blog layout: {% content %}" +
+				"Blog layout: {{ Page.Content }}" +
 				`{% img "img.png" %}` +
 				"</body>" +
 				"{% js_all %}\n" +
@@ -276,6 +276,60 @@ func TestBasicSite(t *testing.T) {
 		`(layout 2 js!)`)
 	tt.contents("public/static/css/layout/blog/layout2.css",
 		`(layout 2 css!)`)
+}
+
+func TestContentAutoMetas(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.DateFormat = "01-02-2006"
+
+	pages := append([]testFile{}, basicSite...)
+	tt := testNew(t, true, cfg, append(pages,
+		testFile{
+			p:  "layouts/date/_single.html",
+			sc: "{{ Page.Date }} -- {{ Page.Title }}",
+		},
+		testFile{
+			p:  "layouts/summary/_single.html",
+			sc: `{{ Page.Summary }} -> content: {{ Page.Content }}`,
+		},
+		testFile{
+			p:  "content/date/title-with_some-stuff-or-another.md",
+			sc: "---\ndate: 2015-06-05\n---",
+		},
+		testFile{
+			p: "content/date/2015-06-06-title-with-date.md",
+		},
+		testFile{
+			p:  "content/date/2015-06-07.md",
+			sc: "---\ntitle: stuffs and stuffs\n---",
+		},
+		testFile{
+			p:  "content/summary/meta.md",
+			sc: "---\nsummary: much summary\n---",
+		},
+		testFile{
+			p:  "content/summary/content.md",
+			sc: "much content",
+		},
+	)...)
+	defer tt.cleanup()
+
+	tt.contents("public/date/title-with_some-stuff-or-another.html",
+		`06-05-2015 -- Title with Some Stuff or Another`)
+
+	tt.contents("public/date/2015-06-06-title-with-date.html",
+		`06-06-2015 -- Title with Date`)
+
+	tt.contents("public/date/2015-06-07.html",
+		`06-07-2015 -- stuffs and stuffs`)
+
+	tt.contents("public/summary/meta.html",
+		`much summary -> content:`)
+
+	tt.contents("public/summary/content.html",
+		`much content -> content:<p>much content`)
 }
 
 func TestBuildStats(t *testing.T) {

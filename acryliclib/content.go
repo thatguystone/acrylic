@@ -21,13 +21,13 @@ type contents struct {
 }
 
 type content struct {
-	cs         *contents
-	f          file
-	cpath      string
-	metaEnd    int
-	meta       *meta
-	tplContext p2.Context
-	gen        interface{}
+	cs      *contents
+	f       file
+	cpath   string
+	metaEnd int
+	meta    *meta
+	loutCtx layoutContext
+	gen     contentGenWrapper
 
 	// Assets need to be ordered how they appear on the page, unless otherwise
 	// noted. This flag sets when it's time to start rearranging assets. See
@@ -45,14 +45,19 @@ const (
 )
 
 var (
-	metaDelim = []byte("---\n")
+	metaDelim = []byte("---")
 
 	bannedContentTags = []string{
-		"content",
 		"css_all",
 		"extends",
 		"js_all",
 	}
+
+	bannedContentFilters = []string{}
+
+	// This can be shared: it has no globals set, and it doesn't lock or
+	// anything.
+	p2ContentSet = p2.NewSet("content")
 )
 
 func (cs *contents) init(s *site) {
@@ -66,9 +71,10 @@ func (cs *contents) add(f file) error {
 		f.layoutName = "_single"
 	}
 
+	s := cs.s
 	ext := filepath.Ext(f.srcPath)
 	cpath := fChangeExt(f.dstPath, "")
-	f.dstPath = filepath.Join(cs.s.cfg.Root, cs.s.cfg.PublicDir, f.dstPath)
+	f.dstPath = filepath.Join(s.cfg.Root, s.cfg.PublicDir, f.dstPath)
 
 	c := &content{
 		cs:    cs,
@@ -77,21 +83,20 @@ func (cs *contents) add(f file) error {
 		meta:  &meta{},
 	}
 
-	c.tplContext = p2.Context{
-		privSiteKey: cs.s,
-		contentKey:  c,
-		"Page": PageCtx{
-			Meta: c.meta,
-		},
-	}
-
-	c.gen = cs.getGenerator(c, ext)
+	c.gen = getContentGener(s, c, ext)
 
 	cs.mtx.Lock()
 	cs.srcs[f.srcPath] = c
 	cs.mtx.Unlock()
 
-	return c.load()
+	err := c.load()
+	if err != nil {
+		return err
+	}
+
+	c.loutCtx = newLayoutCtx(cs.s, c)
+
+	return nil
 }
 
 func (cs *contents) find(currFile, rel string) (*content, error) {
@@ -105,17 +110,6 @@ func (cs *contents) find(currFile, rel string) (*content, error) {
 	}
 
 	return c, nil
-}
-
-func (cs *contents) getGenerator(c *content, ext string) interface{} {
-	for _, g := range generators {
-		cg := g.getGenerator(c, ext)
-		if cg != nil {
-			return cg
-		}
-	}
-
-	panic(fmt.Errorf("no content generator found for %s", ext))
 }
 
 func (cs *contents) claimDest(dst string, c *content) (alreadyClaimed bool, err error) {
@@ -182,17 +176,19 @@ func (c *content) load() error {
 	mb := &bytes.Buffer{}
 	mb.Write(metaDelim)
 
+	haveClosingDelim := false
 	for err == nil {
 		var l []byte
 		l, err = r.ReadBytes('\n')
 		mb.Write(l)
 
-		if bytes.Equal(metaDelim, l) {
+		if bytes.Equal(metaDelim, bytes.TrimSpace(l)) {
+			haveClosingDelim = true
 			break
 		}
 	}
 
-	if err != nil {
+	if !haveClosingDelim && err != nil {
 		if err == io.EOF {
 			err = fmt.Errorf("metadata missing closing `%s`", metaDelim)
 		}
@@ -243,6 +239,11 @@ func (c *content) processMeta(m []byte, isMetaFile bool) error {
 	return c.meta.merge(m)
 }
 
+func (c *content) getSummary() string {
+	// TODO(astone): implement summary getting
+	return ""
+}
+
 func (c *content) relDest(otherPath string) string {
 	od := filepath.Dir(c.f.dstPath)
 	d, f := filepath.Split(otherPath)
@@ -286,19 +287,12 @@ func (c *content) templatize(w io.Writer) error {
 		return err
 	}
 
-	// Run in total isolation from everything
-	set := p2.NewSet("temp")
-
-	for _, t := range bannedContentTags {
-		set.BanTag(t)
-	}
-
-	tpl, err := set.FromString(string(b[c.metaEnd:]))
+	tpl, err := p2ContentSet.FromString(string(b[c.metaEnd:]))
 	if err != nil {
 		return err
 	}
 
-	return tpl.ExecuteWriter(c.tplContext, w)
+	return tpl.ExecuteWriter(c.loutCtx.forPage(), w)
 }
 
 func (c *content) readAll(w io.Writer) error {

@@ -17,7 +17,9 @@ import (
 )
 
 type contentGenImg struct {
-	c      *content
+	s *site
+	c *content
+
 	mtx    sync.Mutex
 	scaled map[string]image.Point
 }
@@ -39,46 +41,59 @@ const (
 	cropLen
 )
 
-var imgExts = []string{
-	".bmp",
-	".gif",
-	".jpeg",
-	".jpg",
-	".png",
-	".tiff",
+var (
+	imgExts      = map[string]bool{}
+	imgExtsSlice = []string{
+		".bmp",
+		".gif",
+		".jpeg",
+		".jpg",
+		".png",
+		".tiff",
+
+		// TODO(astone): look into checking for imagemagick/graphics magick to get thumbs of PFDs and stuff?
+	}
+)
+
+func init() {
+	for _, ext := range imgExtsSlice {
+		imgExts[ext] = true
+	}
 }
 
-func (gi contentGenImg) getGenerator(c *content, ext string) interface{} {
-	for _, e := range imgExts {
-		if ext == e {
-			return contentGenImg{
-				c:      c,
-				scaled: map[string]image.Point{},
-			}
-		}
+func getContentImgGener(s *site, c *content, ext string) (contentGener, contentType) {
+	if !imgExts[ext] {
+		return nil, contInvalid
 	}
 
-	return nil
+	gi := &contentGenImg{
+		s:      s,
+		c:      c,
+		scaled: map[string]image.Point{},
+	}
+
+	return gi, contImg
 }
 
-func (gi contentGenImg) generatePage() (string, error) {
-	// c := gi.c
-	// s := c.cs.s
+func (gi *contentGenImg) claimDest(c *content) (dstPath string, alreadyClaimed bool, err error) {
+	panic("not yet implemented")
+}
 
+func (gi *contentGenImg) render(s *site, c *content) (content []byte, err error) {
+	panic("not yet implemented")
+}
+
+func (gi *contentGenImg) generate(content []byte, dstPath string, s *site, c *content) (
+	wroteOwnFile bool,
+	err error) {
+
+	panic("not yet implemented")
 	// TODO(astone): generate image pages
-
-	return "", nil
 }
 
-func (contentGenImg) humanName() string {
-	return "image"
-}
-
-func (gi contentGenImg) scale(img img) (w, h int, dstPath string, err error) {
-	c := gi.c
-
+func (gi *contentGenImg) scale(img img) (w, h int, dstPath string, err error) {
 	ext := gi.getNewExt(img)
-	dstPath, alreadyClaimed, err := c.claimStaticDest("img", ext)
+	dstPath, alreadyClaimed, err := gi.c.claimStaticDest("img", ext)
 	if err != nil {
 		return
 	}
@@ -105,7 +120,7 @@ func (gi contentGenImg) scale(img img) (w, h int, dstPath string, err error) {
 		gi.mtx.Unlock()
 	}()
 
-	if !fDestChanged(c.f.srcPath, dstPath) {
+	if !fSrcChanged(gi.c.f.srcPath, dstPath) {
 		var f *os.File
 		f, err = os.Open(dstPath)
 		if err != nil {
@@ -126,9 +141,9 @@ func (gi contentGenImg) scale(img img) (w, h int, dstPath string, err error) {
 		return
 	}
 
-	c.cs.s.stats.addImg()
+	gi.s.stats.addImg()
 
-	f, err := os.Open(c.f.srcPath)
+	f, err := os.Open(gi.c.f.srcPath)
 	if err != nil {
 		return
 	}
@@ -161,7 +176,7 @@ func (gi contentGenImg) scale(img img) (w, h int, dstPath string, err error) {
 	return
 }
 
-func (gi contentGenImg) thumbnailImage(ig image.Image, img img) image.Image {
+func (gi *contentGenImg) thumbnailImage(ig image.Image, img img) image.Image {
 	igb := ig.Bounds()
 	srcW, srcH := igb.Dx(), igb.Dy()
 
@@ -218,7 +233,7 @@ func (gi contentGenImg) thumbnailImage(ig image.Image, img img) image.Image {
 	return ig
 }
 
-func (contentGenImg) resizeImage(ig image.Image, img img) image.Image {
+func (*contentGenImg) resizeImage(ig image.Image, img img) image.Image {
 	igb := ig.Bounds()
 	srcW, srcH := igb.Dx(), igb.Dy()
 
@@ -245,8 +260,8 @@ func (contentGenImg) resizeImage(ig image.Image, img img) image.Image {
 	return imaging.Resize(ig, scaleW, scaleH, imaging.Lanczos)
 }
 
-func (gi contentGenImg) saveImage(ig image.Image, dst string) error {
-	f, err := gi.c.cs.s.fCreate(dst)
+func (gi *contentGenImg) saveImage(ig image.Image, dst string) error {
+	f, err := gi.s.fCreate(dst)
 	if err != nil {
 		return err
 	}
@@ -302,7 +317,7 @@ func (gi contentGenImg) saveImage(ig image.Image, dst string) error {
 	}
 }
 
-func (contentGenImg) getNewExt(img img) string {
+func (*contentGenImg) getNewExt(img img) string {
 	ext := ""
 
 	if img.w != 0 || img.h != 0 {
