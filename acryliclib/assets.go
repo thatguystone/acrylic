@@ -45,6 +45,7 @@ type tagWriter interface {
 type asseter interface {
 	renderer
 	tagWriter
+	contentType() contentType
 	getBase() interface{}
 }
 
@@ -97,33 +98,33 @@ func (a *assets) getType(contType contentType) *assetType {
 }
 
 func (a *assets) writeTag(c *content, dstPath, relPath string, w io.Writer) (err error) {
-	var ar asseter
+	var asstr asseter
 	ext := filepath.Ext(dstPath)
-	for _, tar := range asseters {
-		if tar.renders(ext) {
-			ar = tar
+	for _, tagWriter := range asseters {
+		if tagWriter.renders(ext) {
+			asstr = tagWriter
 			break
 		}
 	}
 
-	if ar == nil {
+	if asstr == nil {
 		panic(fmt.Errorf("unrecognized generated asset: %s", dstPath))
 	}
 
 	writeTag := true
 
-	switch ar.getBase().(type) {
-	case renderScript:
+	switch asstr.contentType() {
+	case contJS:
 		writeTag = !a.js.doCombine
 		a.js.addPath(c.kickAssets, &c.orderedJS, dstPath)
 
-	case renderStyle:
+	case contCSS:
 		writeTag = !a.css.doCombine
 		a.css.addPath(c.kickAssets, &c.orderedCSS, dstPath)
 	}
 
 	if writeTag {
-		err = ar.writeTag(relPath, w)
+		err = asstr.writeTag(relPath, w)
 	}
 
 	return

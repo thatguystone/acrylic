@@ -10,8 +10,9 @@ type renderLess struct{ renderStyle }
 type renderSass struct{ renderStyle }
 type renderCSS struct{ renderStyle }
 
-func (renderStyle) alwaysRender() bool     { return false }
-func (r renderStyle) getBase() interface{} { return r }
+func (renderStyle) contentType() contentType { return contCSS }
+func (renderStyle) alwaysRender() bool       { return false }
+func (r renderStyle) getBase() interface{}   { return r }
 
 func (renderCSS) renders(ext string) bool         { return ext == ".css" }
 func (renderCSS) render(b []byte) ([]byte, error) { return b, nil }
