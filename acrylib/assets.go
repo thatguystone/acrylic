@@ -3,6 +3,7 @@ package acrylib
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -357,14 +358,25 @@ func (at *assetType) combine() (ok bool) {
 	defer fa.Close()
 
 	for _, oa := range at.paths {
-		f, err := os.Open(oa.path)
+		var rc io.ReadCloser
+		var err error
+		if isRemoteURL(oa.path) {
+			var resp *http.Response
+			resp, err = http.Get(checkURLProtocol(oa.path))
+			if err == nil {
+				rc = resp.Body
+			}
+		} else {
+			rc, err = os.Open(oa.path)
+		}
+
 		if err != nil {
 			at.s.errs.add(dest, err)
 			return
 		}
 
-		_, err = io.Copy(fa, f)
-		f.Close()
+		_, err = io.Copy(fa, rc)
+		rc.Close()
 
 		if err != nil {
 			at.s.errs.add(dest, fmt.Errorf("while copying %s: %v", oa.path, err))
@@ -379,7 +391,7 @@ func (at *assetType) combine() (ok bool) {
 		}
 
 		dir := filepath.Dir(oa.path)
-		f, err = os.Open(dir)
+		f, err := os.Open(dir)
 		if err != nil {
 			at.s.errs.add(oa.path, err)
 			continue

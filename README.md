@@ -26,3 +26,4 @@ Notes:
 * summary
 	1. not safe to use from content, can result in deadlock for circular summaries
 	1. <!--more--> for summary cuts
+* assets: may be fetched from a remote HTTP server

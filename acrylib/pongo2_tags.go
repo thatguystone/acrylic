@@ -104,25 +104,29 @@ func (n assetTagNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2
 		}
 
 		path := v.String()
+		relPath := path
 
-		relContent, err := s.findContent(currFile, path)
-		if err != nil {
-			s.errs.add(c.f.srcPath,
-				fmt.Errorf("%s: file not found: %s", n.what, err))
-			continue
+		if !isRemoteURL(path) {
+			relContent, err := s.findContent(currFile, path)
+			if err != nil {
+				s.errs.add(c.f.srcPath,
+					fmt.Errorf("%s: file not found: %s", n.what, err))
+				continue
+			}
+
+			if !relContent.gen.is(n.contType) {
+				s.errs.add(c.f.srcPath,
+					fmt.Errorf("%s: `%s` is not a %s file, have %s",
+						n.what, path, n.what,
+						relContent.gen.humanName()))
+				continue
+			}
+
+			path = relContent.gen.generatePage()
+			relPath = c.relDest(path)
 		}
 
-		if !relContent.gen.is(n.contType) {
-			s.errs.add(c.f.srcPath,
-				fmt.Errorf("%s: `%s` is not a %s file, have %s",
-					n.what, path, n.what,
-					relContent.gen.humanName()))
-			continue
-		}
-
-		path = relContent.gen.generatePage()
-		relPath := c.relDest(path)
-		err = s.assets.addToOrderingAndWrite(assetOrd, path, relPath, w)
+		err := s.assets.addToOrderingAndWrite(assetOrd, path, relPath, w)
 
 		if err != nil {
 			s.errs.add(c.f.srcPath, fmt.Errorf("%s: %v", n.what, err))
