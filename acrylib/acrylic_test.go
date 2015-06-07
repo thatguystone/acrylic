@@ -367,11 +367,21 @@ func TestBuildStats(t *testing.T) {
 	defer tt.cleanup()
 
 	stats := tt.build()
-	tt.a.True(stats.Duration > 0, "duration wasn't set properly: %d == 0", stats.Duration)
-	tt.a.True(stats.Pages > 0, "pages wasn't set properly: %d == 0", stats.Pages)
-	tt.a.True(stats.JS > 0, "js wasn't set properly: %d == 0", stats.JS)
-	tt.a.True(stats.CSS > 0, "css wasn't set properly: %d == 0", stats.CSS)
-	tt.a.True(stats.Imgs > 0, "imgs wasn't set properly: %d == 0", stats.Imgs)
+	tt.a.True(stats.Duration > 0,
+		"duration wasn't set properly: %d == 0",
+		stats.Duration)
+	tt.a.True(stats.Pages > 0,
+		"pages wasn't set properly: %d == 0",
+		stats.Pages)
+	tt.a.True(stats.JS > 0,
+		"js wasn't set properly: %d == 0",
+		stats.JS)
+	tt.a.True(stats.CSS > 0,
+		"css wasn't set properly: %d == 0",
+		stats.CSS)
+	tt.a.True(stats.Imgs > 0,
+		"imgs wasn't set properly: %d == 0",
+		stats.Imgs)
 }
 
 func TestLayoutAndThemesContentPages(t *testing.T) {
@@ -474,7 +484,7 @@ func TestSiteAssetCombining(t *testing.T) {
 		"Blog layout:<h1>post 2</h1><p>post 2</p><img src=../layout/blog/img.png style=width:1px;height:1px;><script src=../../all.js></script><link rel=stylesheet href=../../all.css>")
 
 	fc := tt.readFile("public/all.js")
-	tt.a.Logf("%s", fc)
+	tt.a.Log(fc)
 
 	tt.a.Equal(1, strings.Count(fc, "(layout js)"), "js should only appear once")
 	tt.a.Equal(1, strings.Count(fc, "(layout 2 js!)"), "js should only appear once")
@@ -526,6 +536,26 @@ func TestSiteAssetsOutOfOrder(t *testing.T) {
 	es := errs.String()
 	tt.a.True(strings.Contains(es, "asset ordering inconsistent"),
 		"wrong error string: %s", es)
+}
+
+func TestSiteAssetsTrailer(t *testing.T) {
+	t.Parallel()
+
+	tt := testNew(t, true, nil,
+		testFile{
+			p: "content/all_assets.md",
+			sc: "{% js \"coffee.coffee\" %}\n" +
+				"{% css \"less.less\" %}\n",
+		},
+		testFile{p: "content/coffee.coffee"},
+		testFile{p: "content/less.less"},
+	)
+	defer tt.cleanup()
+
+	fc := tt.readFile("/public/all_assets.html")
+	t.Log(fc)
+	tt.a.True(strings.Contains(fc, tt.lastSite.cfg.LessURL))
+	tt.a.True(strings.Contains(fc, tt.lastSite.cfg.CoffeeURL))
 }
 
 func TestSiteAssetMinify(t *testing.T) {

@@ -52,6 +52,46 @@ func newLayoutSiteCtx(s *site) *layoutSiteCtx {
 	return &lsctx
 }
 
+func (lsctx *layoutSiteCtx) contentLoaded() {
+	sort.Sort(lsctx.Pages)
+	sort.Sort(lsctx.Imgs)
+
+	// fmt.Println(lsctx.Pages)
+	// fmt.Println(lsctx.Imgs)
+}
+
+func (lsctx *layoutSiteCtx) newLayoutContentCtx(c *content) *layoutContentCtx {
+	lcctx := &layoutContentCtx{
+		s:    lsctx.s,
+		c:    c,
+		Meta: c.meta,
+		Date: ctxTime{format: lsctx.s.cfg.DateFormat},
+	}
+
+	if !c.f.isImplicit {
+		base := filepath.Base(c.cpath)
+
+		if date, ok := sToDate(base); ok {
+			lcctx.Date.Time = date
+			base = base[len(sDateFormat):]
+		}
+
+		lcctx.Title = sToTitle(base)
+	}
+
+	if title := c.meta.title(); title != "" {
+		lcctx.Title = title
+	}
+
+	if date, ok := c.meta.date(); ok {
+		lcctx.Date.Time = date
+	}
+
+	lsctx.addContentCtx(lcctx)
+
+	return lcctx
+}
+
 func (lsctx *layoutSiteCtx) addContentCtx(lcctx *layoutContentCtx) {
 	if lcctx.c.f.isImplicit {
 		return
@@ -75,46 +115,6 @@ func (lsctx *layoutSiteCtx) addContentCtx(lcctx *layoutContentCtx) {
 	*lcs = append(*lcs, lcctx)
 
 	lsctx.mtx.Unlock()
-}
-
-func (lsctx *layoutSiteCtx) contentLoaded() {
-	sort.Sort(lsctx.Pages)
-	sort.Sort(lsctx.Imgs)
-
-	// fmt.Println(lsctx.Pages)
-	// fmt.Println(lsctx.Imgs)
-}
-
-func newLayoutContentCtx(s *site, c *content) *layoutContentCtx {
-	lcctx := &layoutContentCtx{
-		s:    s,
-		c:    c,
-		Meta: c.meta,
-		Date: ctxTime{format: s.cfg.DateFormat},
-	}
-
-	if !c.f.isImplicit {
-		base := filepath.Base(c.cpath)
-
-		if date, ok := sToDate(base); ok {
-			lcctx.Date.Time = date
-			base = base[len(sDateFormat):]
-		}
-
-		lcctx.Title = sToTitle(base)
-	}
-
-	if title := c.meta.title(); title != "" {
-		lcctx.Title = title
-	}
-
-	if date, ok := c.meta.date(); ok {
-		lcctx.Date.Time = date
-	}
-
-	s.lsctx.addContentCtx(lcctx)
-
-	return lcctx
 }
 
 func (lcctx *layoutContentCtx) forLayout(assetOrd *assetOrdering) p2.Context {

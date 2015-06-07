@@ -96,7 +96,7 @@ func (cs *contents) add(f file) error {
 		return err
 	}
 
-	c.loutCtx = newLayoutContentCtx(cs.s, c)
+	c.loutCtx = cs.s.lsctx.newLayoutContentCtx(c)
 
 	return nil
 }

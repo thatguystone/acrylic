@@ -13,7 +13,6 @@ type contentGenCJSS struct {
 var (
 	contentJSRends = []renderer{
 		renderCoffee{},
-		renderDart{},
 		renderJS{},
 	}
 

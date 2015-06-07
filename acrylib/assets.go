@@ -69,7 +69,6 @@ const (
 var (
 	asseters = []asseter{
 		renderCoffee{},
-		renderDart{},
 		renderJS{},
 
 		renderLess{},
