@@ -28,6 +28,7 @@ func build(cfg Config) (s *site, stats BuildStats, errs Errors) {
 	return
 }
 
+// Build builds a site based on the given config
 func Build(cfg Config) (BuildStats, Errors) {
 	_, stats, errs := build(cfg)
 	return stats, errs

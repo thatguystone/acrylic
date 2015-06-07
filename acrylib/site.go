@@ -22,7 +22,7 @@ type site struct {
 	d      data
 	l      map[string]*layout
 	assets assets
-	lsctx  *layoutSiteCtx
+	lsctx  *LayoutSiteCtx
 
 	wg        sync.WaitGroup
 	contentCh chan file

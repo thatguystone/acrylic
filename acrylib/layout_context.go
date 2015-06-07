@@ -13,17 +13,19 @@ import (
 	p2 "github.com/flosch/pongo2"
 )
 
-type layoutSiteCtx struct {
+// LayoutSiteCtx contains the values exposed to templates as `Site`.
+type LayoutSiteCtx struct {
 	s     *site
 	mtx   sync.Mutex
-	Title string
-	Menu  layoutSiteMenu
-	Pages layoutContentCtxSlice
-	Imgs  layoutContentCtxSlice
-	Blobs layoutContentCtxSlice
+	Title string                // Title of the site
+	Menu  LayoutMenuCtx         // Menus available for use on the site
+	Pages layoutContentCtxSlice // Sorted list of all pages
+	Imgs  layoutContentCtxSlice // Sorted list of all images
+	Blobs layoutContentCtxSlice // Sorted list of all blobs
 }
 
-type layoutContentCtx struct {
+// LayoutContentCtx contains the values exposed to templates as `Page`.
+type LayoutContentCtx struct {
 	s     *site
 	c     *content
 	Title string
@@ -31,8 +33,16 @@ type layoutContentCtx struct {
 	Meta  *meta
 }
 
-type layoutSiteMenu []*layoutContentCtx
-type layoutContentCtxSlice []*layoutContentCtx
+// LayoutMenuCtx contains menu information for a piece of content.
+type LayoutMenuCtx struct {
+	Name   string
+	Weight int
+}
+
+type layoutMenuCtx []*LayoutContentCtx
+type layoutSiteMenu struct {
+	layoutContentCtxSlice
+}
 
 type ctxTime struct {
 	time.Time
@@ -46,8 +56,8 @@ const (
 	privSiteKey = "__acrylicSite__"
 )
 
-func newLayoutSiteCtx(s *site) *layoutSiteCtx {
-	lsctx := layoutSiteCtx{
+func newLayoutSiteCtx(s *site) *LayoutSiteCtx {
+	lsctx := LayoutSiteCtx{
 		s:     s,
 		Title: s.cfg.Title,
 	}
@@ -55,7 +65,7 @@ func newLayoutSiteCtx(s *site) *layoutSiteCtx {
 	return &lsctx
 }
 
-func (lsctx *layoutSiteCtx) addContentCtx(lcctx *layoutContentCtx) {
+func (lsctx *LayoutSiteCtx) addContentCtx(lcctx *LayoutContentCtx) {
 	if lcctx.c.f.isImplicit {
 		return
 	}
@@ -83,17 +93,18 @@ func (lsctx *layoutSiteCtx) addContentCtx(lcctx *layoutContentCtx) {
 	lsctx.mtx.Unlock()
 }
 
-func (lsctx *layoutSiteCtx) contentLoaded() {
+func (lsctx *LayoutSiteCtx) contentLoaded() {
 	sort.Sort(lsctx.Pages)
 	sort.Sort(lsctx.Imgs)
 	sort.Sort(lsctx.Blobs)
+	sort.Sort(layoutSiteMenu{lsctx.Menu})
 
 	// fmt.Println("pages:", lsctx.Pages)
 	// fmt.Println("imgs:", lsctx.Imgs)
 	// fmt.Println("blobs:", lsctx.Blobs)
 }
 
-func (lcctx *layoutContentCtx) init(s *site, c *content) {
+func (lcctx *LayoutContentCtx) init(s *site, c *content) {
 	lcctx.s = s
 	lcctx.c = c
 	lcctx.Meta = c.meta
@@ -119,7 +130,7 @@ func (lcctx *layoutContentCtx) init(s *site, c *content) {
 	}
 }
 
-func (lcctx *layoutContentCtx) forLayout(assetOrd *assetOrdering) p2.Context {
+func (lcctx *LayoutContentCtx) forLayout(assetOrd *assetOrdering) p2.Context {
 	return p2.Context{
 		privSiteKey: lcctx.s,
 		contentKey:  lcctx.c,
@@ -129,17 +140,19 @@ func (lcctx *layoutContentCtx) forLayout(assetOrd *assetOrdering) p2.Context {
 	}
 }
 
-func (lcctx *layoutContentCtx) forPage() p2.Context {
+func (lcctx *LayoutContentCtx) forPage() p2.Context {
 	ctx := lcctx.forLayout(&lcctx.c.assetOrd)
 	ctx[isPageKey] = true
 	return ctx
 }
 
-func (lcctx *layoutContentCtx) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+// Summary gets a summary of the content
+func (lcctx *LayoutContentCtx) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	return p2.AsValue(lcctx.c.getSummary())
 }
 
-func (lcctx *layoutContentCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+// Content gets an HTML dump of the content
+func (lcctx *LayoutContentCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	if _, ok := tplP2Ctx.Public[isPageKey]; ok {
 		lcctx.s.errs.add(lcctx.c.f.srcPath,
 			// TODO(astone): add link to docs page explaining why
@@ -158,11 +171,13 @@ func (lcctx *layoutContentCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value 
 	return p2.AsSafeValue(html)
 }
 
-func (lcctx *layoutContentCtx) IsActive(tplP2Ctx *p2.ExecutionContext) bool {
+// IsActive determines if this content is the page currently being generated.
+func (lcctx *LayoutContentCtx) IsActive(tplP2Ctx *p2.ExecutionContext) bool {
 	return false
 }
 
-func (lcctx *layoutContentCtx) IsParent(o *layoutContentCtx) bool {
+// IsParentOf checks if the given content is a parent of this content.
+func (lcctx *LayoutContentCtx) IsParentOf(o *LayoutContentCtx) bool {
 	return false
 }
 

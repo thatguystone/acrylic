@@ -26,7 +26,7 @@ type content struct {
 	cpath    string
 	metaEnd  int
 	meta     *meta
-	lcctx    layoutContentCtx
+	lcctx    LayoutContentCtx
 	gen      contentGenWrapper
 	assetOrd assetOrdering
 	deets    contentDetails
