@@ -88,12 +88,14 @@ func (gi *contentGenImg) generate(content []byte, dstPath string, s *site, c *co
 	err error) {
 
 	panic("not yet implemented")
+
 	// TODO(astone): generate image pages
+	// TODO(astone): be sure to include asset trailers
 }
 
 func (gi *contentGenImg) scale(img img) (w, h int, dstPath string, err error) {
 	ext := gi.getNewExt(img)
-	dstPath, alreadyClaimed, err := gi.c.claimStaticDest("img", ext)
+	dstPath, alreadyClaimed, err := gi.c.claimDest(ext)
 	if err != nil {
 		return
 	}

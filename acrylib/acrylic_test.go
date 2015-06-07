@@ -268,22 +268,22 @@ func TestBasicSite(t *testing.T) {
 	tt := testNew(t, true, nil, basicSite...)
 	defer tt.cleanup()
 
-	tt.exists("public/static/js/blog/post1.js")
-	tt.exists("public/static/js/blog/post2.js")
-	tt.exists("public/static/css/blog/post1.css")
-	tt.exists("public/static/css/blog/post2.css")
+	tt.exists("public/blog/post1.js")
+	tt.exists("public/blog/post2.js")
+	tt.exists("public/blog/post1.css")
+	tt.exists("public/blog/post2.css")
 
 	tt.contents("public/index.html", defaultLayouts["_index"])
 	tt.contents("public/blog/empty/index.html", defaultLayouts["_list"])
 
 	tt.contents("public/blog/post1.html",
-		`<script src=../../static/js/layout/blog/layout.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout.css>Blog layout:<h1>post 1</h1><p>post 1<script src=../static/js/blog/post1.js></script><link rel=stylesheet href=../static/css/blog/post1.css></p><img src=../static/img/layout/blog/img.png style=width:1px;height:1px;><script src=../../static/js/layout/blog/layout2.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout2.css>`)
+		`<script src=../layout/blog/layout.js></script><link rel=stylesheet href=../layout/blog/layout.css>Blog layout:<h1>post 1</h1><p>post 1<script src=post1.js></script><link rel=stylesheet href=post1.css></p><img src=../layout/blog/img.png style=width:1px;height:1px;><script src=../layout/blog/layout2.js></script><link rel=stylesheet href=../layout/blog/layout2.css>`)
 	tt.contents("public/blog/post2.html",
-		`<script src=../../static/js/layout/blog/layout.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout.css>Blog layout:<h1>post 2</h1><p>post 2<script src=../static/js/blog/post2.js></script><link rel=stylesheet href=../static/css/blog/post2.css></p><img src=../static/img/layout/blog/img.png style=width:1px;height:1px;><script src=../../static/js/layout/blog/layout2.js></script><link rel=stylesheet href=../../static/css/layout/blog/layout2.css>`)
+		`<script src=../layout/blog/layout.js></script><link rel=stylesheet href=../layout/blog/layout.css>Blog layout:<h1>post 2</h1><p>post 2<script src=post2.js></script><link rel=stylesheet href=post2.css></p><img src=../layout/blog/img.png style=width:1px;height:1px;><script src=../layout/blog/layout2.js></script><link rel=stylesheet href=../layout/blog/layout2.css>`)
 
-	tt.contents("public/static/js/layout/blog/layout2.js",
+	tt.contents("public/layout/blog/layout2.js",
 		`(layout 2 js!)`)
-	tt.contents("public/static/css/layout/blog/layout2.css",
+	tt.contents("public/layout/blog/layout2.css",
 		`(layout 2 css!)`)
 }
 
@@ -451,19 +451,29 @@ func TestSiteAssetCombining(t *testing.T) {
 	cfg.RenderCSS = true
 	cfg.SingleCSS = true
 
-	tt := testNew(t, true, cfg, basicSite...)
+	pages := append([]testFile{}, basicSite...)
+	tt := testNew(t, true, cfg, append(pages,
+		testFile{
+			p:  "lone/script.js",
+			sc: `some page`,
+		},
+	)...)
 	defer tt.cleanup()
 
-	tt.exists("public/static/all.js")
-	tt.notExists("public/static/js/layout/blog/layout2.js")
+	tt.exists("public/all.js")
+	tt.notExists("public/layout/blog/layout2.js")
 
-	tt.exists("public/static/all.css")
-	tt.notExists("public/static/js/layout/blog/layout2.css")
+	tt.exists("public/all.css")
+	tt.notExists("public/layout/blog/layout2.css")
+
+	// The whole directory should be trashed
+	tt.notExists("public/lone")
+	tt.notExists("public/lone/script.js")
 
 	tt.contents("public/blog/post2.html",
-		"Blog layout:<h1>post 2</h1><p>post 2</p><img src=../static/img/layout/blog/img.png style=width:1px;height:1px;><script src=../../static/all.js></script><link rel=stylesheet href=../../static/all.css>")
+		"Blog layout:<h1>post 2</h1><p>post 2</p><img src=../layout/blog/img.png style=width:1px;height:1px;><script src=../../all.js></script><link rel=stylesheet href=../../all.css>")
 
-	fc := tt.readFile("public/static/all.js")
+	fc := tt.readFile("public/all.js")
 	tt.a.Logf("%s", fc)
 
 	tt.a.Equal(1, strings.Count(fc, "(layout js)"), "js should only appear once")

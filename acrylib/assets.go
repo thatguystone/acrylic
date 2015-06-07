@@ -14,6 +14,9 @@ type assets struct {
 	// Global asset listings
 	js  assetType
 	css assetType
+
+	mtx          sync.Mutex
+	usedAsseters map[asseter]struct{}
 }
 
 type assetType struct {
@@ -48,21 +51,19 @@ type orderedAsset struct {
 }
 
 type tagWriter interface {
-	writeTag(path string, w io.Writer) error
+	writeTag(path string, w io.Writer) (int, error)
 }
 
 type asseter interface {
 	renderer
 	tagWriter
 	contentType() contentType
-	getBase() interface{}
+	writeTrailer(cfg *Config, w io.Writer) (int, error)
 }
 
 const (
 	combinedName = "all"
 )
-
-// TODO(astone): asset trailers for less/coffee/etc
 
 var (
 	asseters = []asseter{
@@ -161,10 +162,33 @@ func (a *assets) addToOrderingAndWrite(
 	}
 
 	if writeTag {
-		err = asstr.writeTag(relPath, w)
+		_, err = asstr.writeTag(relPath, w)
 	}
 
 	return
+}
+
+func (a *assets) writeTrailers(assetOrd assetOrdering, w io.Writer) error {
+	pathTypes := [][]string{assetOrd.js, assetOrd.css}
+
+OUTER:
+	// Yeah, this can probably be optimized....
+	for _, asstr := range asseters {
+		for _, paths := range pathTypes {
+			for _, path := range paths {
+				if asstr.renders(filepath.Ext(path)) {
+					_, err := asstr.writeTrailer(a.s.cfg, w)
+					if err != nil {
+						return err
+					}
+
+					continue OUTER
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (a *assets) crunch() {
@@ -315,8 +339,7 @@ func (at *assetType) combine() (ok bool) {
 		return true
 	}
 
-	staticDir := filepath.Join(at.s.cfg.Root, at.s.cfg.PublicDir, staticPubDir)
-	dest := filepath.Join(staticDir, combinedName)
+	dest := filepath.Join(at.s.cfg.Root, at.s.cfg.PublicDir, combinedName)
 	dest += "." + at.which
 
 	_, err := at.s.cs.claimDest(dest, at.c)
@@ -347,12 +370,33 @@ func (at *assetType) combine() (ok bool) {
 			at.s.errs.add(dest, fmt.Errorf("while copying %s: %v", oa.path, err))
 			return
 		}
-	}
 
-	// Clear so that minificaton gets the right file
-	at.paths = nil
-	at.pathsIdx = map[string]*orderedAsset{}
-	at.addPath("", dest)
+		// Remove file since it's not needed anymore
+		err = os.Remove(oa.path)
+		if err != nil {
+			at.s.errs.add(oa.path, err)
+			continue
+		}
+
+		dir := filepath.Dir(oa.path)
+		f, err = os.Open(dir)
+		if err != nil {
+			at.s.errs.add(oa.path, err)
+			continue
+		}
+
+		list, err := f.Readdir(1)
+		f.Close()
+
+		// If the dir the file was in is now empty, remove the dir, too
+		if err == nil && len(list) == 0 {
+			err = os.RemoveAll(dir)
+		}
+
+		if err != nil {
+			at.s.errs.add(oa.path, err)
+		}
+	}
 
 	err = fa.Close()
 	if err != nil {
@@ -360,11 +404,10 @@ func (at *assetType) combine() (ok bool) {
 		return
 	}
 
-	err = os.RemoveAll(filepath.Join(staticDir, at.which))
-	if err != nil {
-		at.s.errs.add(dest, err)
-		return
-	}
+	// Clear so that minificaton gets the right file
+	at.paths = nil
+	at.pathsIdx = map[string]*orderedAsset{}
+	at.addPath("", dest)
 
 	return true
 }

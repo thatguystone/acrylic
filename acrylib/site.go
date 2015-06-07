@@ -39,7 +39,6 @@ var (
 	}
 	reservedInternalPaths = []string{
 		imgPubDir,
-		staticPubDir,
 	}
 
 	allReservedPaths = []string{}

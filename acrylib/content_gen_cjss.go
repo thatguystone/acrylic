@@ -68,9 +68,9 @@ func getContentCJSSGener(
 
 func (cjss *contentGenCJSS) claimDest(c *content) (dstPath string, alreadyClaimed bool, err error) {
 	if cjss.doRender {
-		dstPath, alreadyClaimed, err = c.claimStaticDest(cjss.what, cjss.ext)
+		dstPath, alreadyClaimed, err = c.claimDest(cjss.ext)
 	} else {
-		dstPath, alreadyClaimed, err = c.claimStaticDest(cjss.what, "")
+		dstPath, alreadyClaimed, err = c.claimDest("")
 	}
 	return
 }

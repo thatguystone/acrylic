@@ -10,6 +10,9 @@ type Config struct {
 	Root  string // Where the site files live, relative to current directory
 	Theme string // Name of the theme to use
 
+	// Title to use for the site
+	Title string
+
 	// Date format to use when printing dates
 	DateFormat string `yaml:"dateFormat"`
 
@@ -71,6 +74,10 @@ type Config struct {
 	UnorderedCSS bool
 
 	Jobs uint // How many jobs may be run in parallel. Defaults to GOMAXPROCS*2.
+
+	// Paths to various libraries that are needed by assets
+	LessURL   string `yaml:"lessURL"`
+	CoffeeURL string `yaml:"coffeeURL"`
 }
 
 func (cfg *Config) setDefaults() {
@@ -112,5 +119,13 @@ func (cfg *Config) setDefaults() {
 
 	if cfg.Jobs == 0 {
 		cfg.Jobs = uint(runtime.GOMAXPROCS(-1)) * 2
+	}
+
+	if cfg.LessURL == "" {
+		cfg.LessURL = "//cdnjs.cloudflare.com/ajax/libs/less.js/2.5.1/less.min.js"
+	}
+
+	if cfg.CoffeeURL == "" {
+		cfg.CoffeeURL = "//cdnjs.cloudflare.com/ajax/libs/coffee-script/1.9.3/coffee-script.min.js"
 	}
 }

@@ -92,10 +92,10 @@ func (n urlNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Erro
 
 func (n assetTagNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Error {
 	s := ctx.Public[privSiteKey].(*site)
-	pc := ctx.Public[contentKey].(*content)
+	c := ctx.Public[contentKey].(*content)
 	assetOrd := ctx.Public[assetOrdKey].(*assetOrdering)
 
-	currFile := n.contentRel(pc)
+	currFile := n.contentRel(c)
 
 	for _, src := range n.srcs {
 		v, perr := src.Evaluate(ctx)
@@ -105,26 +105,27 @@ func (n assetTagNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2
 
 		path := v.String()
 
-		c, err := s.findContent(currFile, path)
+		relContent, err := s.findContent(currFile, path)
 		if err != nil {
-			s.errs.add(pc.f.srcPath, fmt.Errorf("%s: file not found: %s", n.what, err))
+			s.errs.add(c.f.srcPath,
+				fmt.Errorf("%s: file not found: %s", n.what, err))
 			continue
 		}
 
-		if !c.gen.is(n.contType) {
-			s.errs.add(pc.f.srcPath,
+		if !relContent.gen.is(n.contType) {
+			s.errs.add(c.f.srcPath,
 				fmt.Errorf("%s: `%s` is not a %s file, have %s",
 					n.what, path, n.what,
-					c.gen.humanName()))
+					relContent.gen.humanName()))
 			continue
 		}
 
-		path = c.gen.generatePage()
+		path = relContent.gen.generatePage()
 		relPath := c.relDest(path)
 		err = s.assets.addToOrderingAndWrite(assetOrd, path, relPath, w)
 
 		if err != nil {
-			s.errs.add(pc.f.srcPath, fmt.Errorf("%s: %v", n.what, err))
+			s.errs.add(c.f.srcPath, fmt.Errorf("%s: %v", n.what, err))
 		}
 	}
 
@@ -139,10 +140,10 @@ func (n assetAllNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2
 		return nil
 	}
 
-	relPath := c.relDest(filepath.Join(s.cfg.Root, staticPubDir, combinedName))
+	relPath := c.relDest(filepath.Join(s.cfg.Root, combinedName))
 	relPath += "." + n.what
 
-	err := n.tagger.writeTag(relPath, w)
+	_, err := n.tagger.writeTag(relPath, w)
 	if err != nil {
 		s.errs.add(c.f.srcPath, fmt.Errorf("%s_all: %v", n.what, err))
 	}

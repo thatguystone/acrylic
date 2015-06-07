@@ -43,7 +43,6 @@ type contentDetails struct {
 const (
 	imgPubDir    = "img"
 	layoutPubDir = "layout"
-	staticPubDir = "static"
 	themePubDir  = "theme"
 )
 
@@ -283,18 +282,7 @@ func (c *content) relDest(otherPath string) string {
 }
 
 func (c *content) claimDest(ext string) (string, bool, error) {
-	return c.claimOtherDest(c.f.dstPath, ext)
-}
-
-func (c *content) claimStaticDest(which, ext string) (string, bool, error) {
-	cfg := c.cs.s.cfg
-	p := fDropFirst(fDropRoot(cfg.Root, c.f.dstPath))
-	p = filepath.Join(cfg.Root, cfg.PublicDir, staticPubDir, which, p)
-
-	return c.claimOtherDest(p, ext)
-}
-
-func (c *content) claimOtherDest(dst, ext string) (string, bool, error) {
+	dst := c.f.dstPath
 	if ext != "" {
 		dst = fChangeExt(dst, ext)
 	}

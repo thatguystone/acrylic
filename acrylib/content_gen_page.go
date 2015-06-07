@@ -69,6 +69,10 @@ func (gp *contentGenPage) generate(content []byte, dstPath string, s *site, c *c
 	}
 
 	err = lo.execute(c.loutCtx.forLayout(&assetOrd), f)
+	if err == nil {
+		err = s.assets.writeTrailers(assetOrd, f)
+	}
+
 	if err != nil {
 		err = fmt.Errorf("content: failed to render layout: %v", err)
 		return

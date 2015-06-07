@@ -16,7 +16,7 @@ import (
 type layoutSiteCtx struct {
 	s     *site
 	mtx   sync.Mutex
-	Name  string
+	Title string
 	Pages layoutContentCtxSlice
 	Imgs  layoutContentCtxSlice
 }
@@ -45,7 +45,8 @@ const (
 
 func newLayoutSiteCtx(s *site) *layoutSiteCtx {
 	lsctx := layoutSiteCtx{
-		s: s,
+		s:     s,
+		Title: s.cfg.Title,
 	}
 
 	return &lsctx
