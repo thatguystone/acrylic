@@ -1,9 +1,6 @@
 package acryliclib
 
-import (
-	"fmt"
-	"io"
-)
+import "fmt"
 
 type contentGenGetter func(s *site, c *content, ext string) (contentGener, contentType)
 
@@ -97,7 +94,7 @@ func (gw *contentGenWrapper) generatePage() (dstPath string) {
 		wroteOwnFile, err = gw.gener.generate(content, dstPath, gw.s, gw.c)
 
 		if err == nil && !wroteOwnFile {
-			err = gw.writeFile(dstPath, content)
+			err = gw.s.fWrite(dstPath, content)
 		}
 	}
 
@@ -128,28 +125,6 @@ func (gw *contentGenWrapper) is(contType contentType) bool {
 
 func (gw *contentGenWrapper) humanName() string {
 	return gw.contType.String()
-}
-
-func (gw *contentGenWrapper) writeFile(dstPath string, content []byte) (err error) {
-	f, err := gw.s.fCreate(dstPath)
-	if err != nil {
-		return
-	}
-
-	defer f.Close()
-
-	w, err := f.Write(content)
-	if err != nil {
-		return
-	}
-
-	if w != len(content) {
-		err = io.ErrShortWrite
-		return
-	}
-
-	err = f.Close()
-	return
 }
 
 func (contType contentType) String() string {

@@ -87,6 +87,8 @@ func (s *site) build() (BuildStats, Errors) {
 
 	s.stopContentReader()
 
+	s.lsctx.contentLoaded()
+
 	if !s.errs.has() {
 		s.generate()
 	}

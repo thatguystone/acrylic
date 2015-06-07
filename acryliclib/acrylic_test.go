@@ -67,6 +67,10 @@ var (
 			sc: "(post 1 css)",
 		},
 		testFile{
+			p:  "content/blog/post1/stuff.html",
+			sc: "(post 1 css)",
+		},
+		testFile{
 			p: "content/blog/post2.md",
 			sc: "---\ntitle: post2\n---\n" +
 				"# post 2\n" +
@@ -182,18 +186,13 @@ func (tt *testAcrylic) createFiles(files []testFile) {
 			err := os.MkdirAll(p, 0700)
 			tt.a.MustNotError(err, "failed to create dir %s", p)
 		} else {
-			f, err := fCreate(p, createFlags, 0600)
-			tt.a.MustNotError(err, "failed to create file %s", p)
-
+			var err error
 			if len(file.sc) > 0 {
-				_, err = f.Write([]byte(file.sc))
+				err = fWrite(p, []byte(file.sc), 0640)
 			} else {
-				_, err = f.Write(file.bc)
+				err = fWrite(p, file.bc, 0640)
 			}
 
-			tt.a.MustNotError(err, "failed to write file %s", p)
-
-			err = f.Close()
 			tt.a.MustNotError(err, "failed to write file %s", p)
 		}
 	}

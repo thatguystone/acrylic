@@ -1,8 +1,12 @@
 package acryliclib
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -10,10 +14,11 @@ import (
 )
 
 type layoutSiteCtx struct {
-	s       *site
-	mtx     sync.Mutex
-	Name    string
-	Content []*layoutContentCtx
+	s     *site
+	mtx   sync.Mutex
+	Name  string
+	Pages layoutContentCtxSlice
+	Imgs  layoutContentCtxSlice
 }
 
 type layoutContentCtx struct {
@@ -23,6 +28,8 @@ type layoutContentCtx struct {
 	Date  ctxTime
 	Meta  *meta
 }
+
+type layoutContentCtxSlice []*layoutContentCtx
 
 type ctxTime struct {
 	time.Time
@@ -37,23 +44,48 @@ const (
 )
 
 func newLayoutSiteCtx(s *site) *layoutSiteCtx {
-	ctx := layoutSiteCtx{
+	lsctx := layoutSiteCtx{
 		s: s,
 	}
 
-	return &ctx
+	return &lsctx
 }
 
 func (lsctx *layoutSiteCtx) addContentCtx(lcctx *layoutContentCtx) {
+	if lcctx.c.f.isImplicit {
+		return
+	}
+
+	var lcs *layoutContentCtxSlice
+	switch lcctx.c.gen.contType {
+	case contPage:
+		lcs = &lsctx.Pages
+
+	case contImg:
+		lcs = &lsctx.Imgs
+	}
+
+	if lcs == nil {
+		return
+	}
+
 	lsctx.mtx.Lock()
 
-	lsctx.Content = append(lsctx.Content, lcctx)
+	*lcs = append(*lcs, lcctx)
 
 	lsctx.mtx.Unlock()
 }
 
+func (lsctx *layoutSiteCtx) contentLoaded() {
+	sort.Sort(lsctx.Pages)
+	sort.Sort(lsctx.Imgs)
+
+	// fmt.Println(lsctx.Pages)
+	// fmt.Println(lsctx.Imgs)
+}
+
 func newLayoutContentCtx(s *site, c *content) *layoutContentCtx {
-	ctx := &layoutContentCtx{
+	lcctx := &layoutContentCtx{
 		s:    s,
 		c:    c,
 		Meta: c.meta,
@@ -64,24 +96,24 @@ func newLayoutContentCtx(s *site, c *content) *layoutContentCtx {
 		base := filepath.Base(c.cpath)
 
 		if date, ok := sToDate(base); ok {
-			ctx.Date.Time = date
+			lcctx.Date.Time = date
 			base = base[len(sDateFormat):]
 		}
 
-		ctx.Title = sToTitle(base)
+		lcctx.Title = sToTitle(base)
 	}
 
 	if title := c.meta.title(); title != "" {
-		ctx.Title = title
+		lcctx.Title = title
 	}
 
 	if date, ok := c.meta.date(); ok {
-		ctx.Date.Time = date
+		lcctx.Date.Time = date
 	}
 
-	s.lsctx.addContentCtx(ctx)
+	s.lsctx.addContentCtx(lcctx)
 
-	return ctx
+	return lcctx
 }
 
 func (lcctx *layoutContentCtx) forLayout(assetOrd *assetOrdering) p2.Context {
@@ -100,13 +132,13 @@ func (lcctx *layoutContentCtx) forPage() p2.Context {
 	return ctx
 }
 
-func (ctx *layoutContentCtx) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
-	return p2.AsValue(ctx.c.getSummary())
+func (lcctx *layoutContentCtx) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+	return p2.AsValue(lcctx.c.getSummary())
 }
 
-func (ctx *layoutContentCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+func (lcctx *layoutContentCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	if _, ok := tplP2Ctx.Public[isPageKey]; ok {
-		ctx.s.errs.add(ctx.c.f.srcPath,
+		lcctx.s.errs.add(lcctx.c.f.srcPath,
 			// TODO(astone): add link to docs page explaining why
 			errors.New("content of other pages may not be included in other content"))
 		return p2.AsValue("")
@@ -115,16 +147,65 @@ func (ctx *layoutContentCtx) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	// Generate content first: this causes assets to be populated and
 	// everything to be setup; once this returns, the content is ready for
 	// use.
-	html := ctx.c.gen.getContent()
+	html := lcctx.c.gen.getContent()
 
 	ao := tplP2Ctx.Public[assetOrdKey].(*assetOrdering)
-	ao.assimilate(&ctx.s.assets, ctx.c.assetOrd)
+	ao.assimilate(&lcctx.s.assets, lcctx.c.assetOrd)
 
 	return p2.AsSafeValue(html)
 }
 
-func (ctx *layoutContentCtx) IsActive(tplP2Ctx *p2.ExecutionContext) bool {
+func (lcctx *layoutContentCtx) IsActive(tplP2Ctx *p2.ExecutionContext) bool {
 	return false
+}
+
+func (lcctx *layoutContentCtx) IsParent(o *layoutContentCtx) bool {
+	return false
+}
+
+func (ls layoutContentCtxSlice) Len() int      { return len(ls) }
+func (ls layoutContentCtxSlice) Swap(a, b int) { ls[a], ls[b] = ls[b], ls[a] }
+
+func (ls layoutContentCtxSlice) Less(a, b int) bool {
+	actx := ls[a]
+	bctx := ls[b]
+	ap, af := filepath.Split(actx.c.cpath)
+	bp, bf := filepath.Split(bctx.c.cpath)
+
+	if ap == bp {
+		if actx.Date.Equal(bctx.Date.Time) {
+			return af < bf
+
+		}
+
+		return actx.Date.After(bctx.Date.Time)
+	}
+
+	return ap < bp
+}
+
+func (ls layoutContentCtxSlice) String() string {
+	b := bytes.Buffer{}
+	b.WriteRune('[')
+
+	for i, lcctx := range ls {
+		if i > 0 {
+			b.WriteRune(' ')
+		}
+
+		path := lcctx.c.cpath
+		date := lcctx.Date.Format(sDateFormat)
+		if !lcctx.Date.IsZero() && !strings.Contains(path, date) {
+			dir, file := filepath.Split(path)
+			path = fmt.Sprintf("%s%s-%s", dir, date, file)
+		}
+
+		b.WriteString(path)
+	}
+
+	b.WriteRune(']')
+
+	return b.String()
 }
 
 func (t ctxTime) String() string {
