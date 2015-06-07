@@ -21,6 +21,9 @@ type Config struct {
 	// included in the summary.
 	SummaryWords int
 
+	// If content dated in the future should be generated and published
+	PublishFuture bool
+
 	FileMode   os.FileMode // For generated content. Defaults to 0640.
 	DataDir    string      `yaml:"dataDir"`    // Defaults to "data"
 	ContentDir string      `yaml:"contentDir"` // Defaults to "content"
@@ -93,7 +96,7 @@ func (cfg *Config) setDefaults() {
 		cfg.DateFormat = sDateFormat
 	}
 
-	if cfg.SummaryWords == 0 {
+	if cfg.SummaryWords <= 0 {
 		cfg.SummaryWords = 70
 	}
 

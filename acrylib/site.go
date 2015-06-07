@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	p2 "github.com/flosch/pongo2"
 	"github.com/tdewolff/minify"
@@ -71,6 +72,7 @@ func newSite(cfg *Config) *site {
 }
 
 func (s *site) build() (BuildStats, Errors) {
+	s.stats.BuildStart = time.Now()
 	s.loadData()
 
 	if !s.errs.has() {
@@ -97,6 +99,9 @@ func (s *site) build() (BuildStats, Errors) {
 	if !s.errs.has() {
 		s.assets.crunch()
 	}
+
+	s.stats.BuildEnd = time.Now()
+	s.stats.Duration = s.stats.BuildEnd.Sub(s.stats.BuildStart)
 
 	return s.stats, s.errs.s
 }

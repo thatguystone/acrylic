@@ -17,8 +17,10 @@ type layoutSiteCtx struct {
 	s     *site
 	mtx   sync.Mutex
 	Title string
+	Menu  layoutSiteMenu
 	Pages layoutContentCtxSlice
 	Imgs  layoutContentCtxSlice
+	Blobs layoutContentCtxSlice
 }
 
 type layoutContentCtx struct {
@@ -29,6 +31,7 @@ type layoutContentCtx struct {
 	Meta  *meta
 }
 
+type layoutSiteMenu []*layoutContentCtx
 type layoutContentCtxSlice []*layoutContentCtx
 
 type ctxTime struct {
@@ -52,21 +55,49 @@ func newLayoutSiteCtx(s *site) *layoutSiteCtx {
 	return &lsctx
 }
 
+func (lsctx *layoutSiteCtx) addContentCtx(lcctx *layoutContentCtx) {
+	if lcctx.c.f.isImplicit {
+		return
+	}
+
+	var lcs *layoutContentCtxSlice
+	switch lcctx.c.gen.contType {
+	case contPage:
+		lcs = &lsctx.Pages
+
+	case contImg:
+		lcs = &lsctx.Imgs
+
+	case contBlob:
+		lcs = &lsctx.Blobs
+	}
+
+	if lcs == nil {
+		return
+	}
+
+	lsctx.mtx.Lock()
+
+	*lcs = append(*lcs, lcctx)
+
+	lsctx.mtx.Unlock()
+}
+
 func (lsctx *layoutSiteCtx) contentLoaded() {
 	sort.Sort(lsctx.Pages)
 	sort.Sort(lsctx.Imgs)
+	sort.Sort(lsctx.Blobs)
 
-	// fmt.Println(lsctx.Pages)
-	// fmt.Println(lsctx.Imgs)
+	// fmt.Println("pages:", lsctx.Pages)
+	// fmt.Println("imgs:", lsctx.Imgs)
+	// fmt.Println("blobs:", lsctx.Blobs)
 }
 
-func (lsctx *layoutSiteCtx) newLayoutContentCtx(c *content) *layoutContentCtx {
-	lcctx := &layoutContentCtx{
-		s:    lsctx.s,
-		c:    c,
-		Meta: c.meta,
-		Date: ctxTime{format: lsctx.s.cfg.DateFormat},
-	}
+func (lcctx *layoutContentCtx) init(s *site, c *content) {
+	lcctx.s = s
+	lcctx.c = c
+	lcctx.Meta = c.meta
+	lcctx.Date = ctxTime{format: s.cfg.DateFormat}
 
 	if !c.f.isImplicit {
 		base := filepath.Base(c.cpath)
@@ -86,35 +117,6 @@ func (lsctx *layoutSiteCtx) newLayoutContentCtx(c *content) *layoutContentCtx {
 	if date, ok := c.meta.date(); ok {
 		lcctx.Date.Time = date
 	}
-
-	lsctx.addContentCtx(lcctx)
-
-	return lcctx
-}
-
-func (lsctx *layoutSiteCtx) addContentCtx(lcctx *layoutContentCtx) {
-	if lcctx.c.f.isImplicit {
-		return
-	}
-
-	var lcs *layoutContentCtxSlice
-	switch lcctx.c.gen.contType {
-	case contPage:
-		lcs = &lsctx.Pages
-
-	case contImg:
-		lcs = &lsctx.Imgs
-	}
-
-	if lcs == nil {
-		return
-	}
-
-	lsctx.mtx.Lock()
-
-	*lcs = append(*lcs, lcctx)
-
-	lsctx.mtx.Unlock()
 }
 
 func (lcctx *layoutContentCtx) forLayout(assetOrd *assetOrdering) p2.Context {

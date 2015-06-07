@@ -8,24 +8,22 @@ import (
 // BuildStats contains interesting information about a single build of the
 // site.
 type BuildStats struct {
-	Duration time.Duration
-	Pages    uint32
-	JS       uint32
-	CSS      uint32
-	Imgs     uint32
-	Blobs    uint32
+	BuildStart time.Time
+	BuildEnd   time.Time
+	Duration   time.Duration
+	Pages      uint32
+	JS         uint32
+	CSS        uint32
+	Imgs       uint32
+	Blobs      uint32
 }
 
 // Build builds the site specified by cfg
 func build(cfg Config) (s *site, stats BuildStats, errs Errors) {
 	cfg.setDefaults()
 
-	startTime := time.Now()
-
 	s = newSite(&cfg)
 	stats, errs = s.build()
-
-	stats.setRunTime(time.Now().Sub(startTime))
 
 	return
 }
@@ -33,10 +31,6 @@ func build(cfg Config) (s *site, stats BuildStats, errs Errors) {
 func Build(cfg Config) (BuildStats, Errors) {
 	_, stats, errs := build(cfg)
 	return stats, errs
-}
-
-func (bs *BuildStats) setRunTime(d time.Duration) {
-	bs.Duration = d
 }
 
 func (bs *BuildStats) addPage() {

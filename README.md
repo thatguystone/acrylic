@@ -22,8 +22,13 @@ Tags:
 Notes:
 
 * Content exists independent of extension: `test.html` and `test.png` are the same.
-* meta `layoutName` to change which layout is used for the page
+* metas:
+	1. `layoutName: <string>` to change which layout is used for the page
+	1. `publish: <bool>` to control content publishing
 * summary
 	1. not safe to use from content, can result in deadlock for circular summaries
 	1. <!--more--> for summary cuts
 * assets: may be fetched from a remote HTTP server
+* future publishing disabled by default
+	1. use meta `publish:true` to force to publish
+	1. use config PublishFuture to publish all

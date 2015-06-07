@@ -30,15 +30,6 @@ func (m meta) getDate(k string) (time.Time, bool) {
 	return sToDate(s)
 }
 
-func (m meta) getBool(k string) bool {
-	b, ok := m[k].(bool)
-	if !ok {
-		return false
-	}
-
-	return b
-}
-
 func (m meta) title() string {
 	return m.getString("title")
 }
@@ -55,6 +46,11 @@ func (m meta) layoutName() string {
 	return m.getString("layoutName")
 }
 
-func (m meta) publish() bool {
-	return m.getBool("publish")
+func (m meta) publish() (bool, bool) {
+	b, ok := m["publish"].(bool)
+	if !ok {
+		return true, false
+	}
+
+	return b, true
 }

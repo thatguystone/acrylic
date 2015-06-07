@@ -2,11 +2,13 @@ package acrylib
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thatguystone/assert"
 )
@@ -348,6 +350,44 @@ func TestContentAutoMetas(t *testing.T) {
 
 	tt.contents("public/summary/summary-more.html",
 		`i like my content -> content:<p>i like my content</p><p>but you have to click to read more`)
+}
+
+func TestContentFuturePublishing(t *testing.T) {
+	t.Parallel()
+
+	future := time.Now().Add(time.Hour * 24).Format(sDateFormat)
+
+	tt := testNew(t, true, nil,
+		testFile{p: fmt.Sprintf("content/%s.md", future)},
+		testFile{
+			p:  "content/unpublished.md",
+			sc: "---\npublish: false\n---",
+		},
+		testFile{
+			p:  "content/unpublished.md",
+			sc: "---\npublish: false\n---",
+		},
+	)
+	defer tt.cleanup()
+
+	tt.notExists(fmt.Sprintf("public/%s.html", future))
+	tt.notExists("public/unpublished.html")
+}
+
+func TestContentForcedPublish(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.PublishFuture = true
+
+	future := time.Now().Add(time.Hour * 24).Format(sDateFormat)
+
+	tt := testNew(t, true, cfg,
+		testFile{p: fmt.Sprintf("content/%s.md", future)},
+	)
+	defer tt.cleanup()
+
+	tt.exists(fmt.Sprintf("public/%s.html", future))
 }
 
 func TestBuildStats(t *testing.T) {
