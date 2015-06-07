@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 
 	"github.com/codegangsta/cli"
-	"github.com/thatguystone/acrylic/acryliclib"
+	"github.com/thatguystone/acrylic/acrylib"
 	"gopkg.in/yaml.v2"
 )
 
 // Config adds command configuration options to acrylic's build options.
 type Config struct {
-	acryliclib.Config
+	acrylib.Config
 
 	Server struct {
 		ListenAddr string `yaml:"listenAddr"`

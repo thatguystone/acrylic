@@ -1,4 +1,4 @@
-package acryliclib
+package acrylib
 
 import (
 	"path/filepath"

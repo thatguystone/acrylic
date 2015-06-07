@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/thatguystone/acrylic/acryliclib"
+	"github.com/thatguystone/acrylic/acrylib"
 )
 
 func cmdBuild(cfg Config) error {
@@ -21,7 +21,7 @@ func cmdBuild(cfg Config) error {
 		panic(err)
 	}
 
-	stats, errs := acryliclib.Build(cfg.Config)
+	stats, errs := acrylib.Build(cfg.Config)
 	if len(errs) > 0 {
 		return errors.New(errs.String())
 	}
