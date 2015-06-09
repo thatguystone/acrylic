@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestLayoutContextSorting(t *testing.T) {
+func TestTplSorting(t *testing.T) {
 	t.Parallel()
 
 	testFiles := []testFile{
@@ -46,5 +46,29 @@ func TestLayoutContextSorting(t *testing.T) {
 			"     Got: %s",
 			"["+strings.Join(fs, " ")+"]",
 			tt.lastSite.tplSite.Pages)
+	}
+}
+
+func TestTplMenuBasic(t *testing.T) {
+	t.Parallel()
+	tt := testNew(t, true, nil,
+		testFile{
+			p:  "content/one.html",
+			sc: "---\nmenu: main\n---",
+		},
+		testFile{
+			p:  "content/two.html",
+			sc: "---\nmenu: main\n---",
+		},
+		testFile{
+			p:  "content/three.html",
+			sc: "---\nmenu: main\n---",
+		},
+	)
+	defer tt.cleanup()
+
+	t.Logf("menu!")
+	for k, v := range tt.lastSite.tplSite.Menus {
+		t.Logf("%s=%v", k, v)
 	}
 }

@@ -388,7 +388,6 @@ func TestSiteLayoutChanging(t *testing.T) {
 			sc: content,
 		},
 	)
-
 	defer tt.cleanup()
 
 	tt.contents("public/post.html", content)

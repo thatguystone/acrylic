@@ -32,3 +32,4 @@ Notes:
 * future publishing disabled by default
 	1. use meta `publish:true` to force to publish
 	1. use config PublishFuture to publish all
+* content_rel filter to get rel paths from layouts/themes

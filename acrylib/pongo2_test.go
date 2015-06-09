@@ -3,11 +3,11 @@ package acrylib
 import "testing"
 
 func testP2Exec(t *testing.T, in string, out string, files ...testFile) {
-	files = append(files, testFile{
-		p:  "content/tpl/render.html",
-		sc: in,
-	})
-	tt := testNew(t, true, nil, files...)
+	tt := testNew(t, true, nil, append(files,
+		testFile{
+			p:  "content/tpl/render.html",
+			sc: in,
+		})...)
 	defer tt.cleanup()
 
 	tt.contents("public/tpl/render.html",

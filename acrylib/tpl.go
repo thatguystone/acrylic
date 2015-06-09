@@ -17,15 +17,15 @@ import (
 type TplSite struct {
 	s     *site
 	mtx   sync.Mutex
-	Title string // Title of the site
-	// Menu  TplMenu         // Menus available for use on the site
-	Pages tplPageSlice // Sorted list of all pages
-	Imgs  tplPageSlice // Sorted list of all images
-	Blobs tplPageSlice // Sorted list of all blobs
+	Title string              // Title of the site
+	Menus map[string]*TplMenu // Menus available for use on the site
+	Pages tplContentSlice     // Sorted list of all pages
+	Imgs  tplContentSlice     // Sorted list of all images
+	Blobs tplContentSlice     // Sorted list of all blobs
 }
 
-// TplPage contains the values exposed to templates as `Page`.
-type TplPage struct {
+// TplContent contains the values exposed to templates as `Page`.
+type TplContent struct {
 	s     *site
 	c     *content
 	Title string
@@ -33,17 +33,22 @@ type TplPage struct {
 	Meta  *meta
 }
 
-// SEE FOR MENUS: http://gohugo.io/extras/menus/
-// TplMenu contains menu information for a piece of content.
-// type TplMenu struct {
-// 	Name   string
-// 	Weight int
-// }
-
-type tplPageSlice []*TplPage
-type tplSiteMenu struct {
-	tplPageSlice
+// TplMenu contains site-wide menuing information.
+type TplMenu struct {
+	Name     string
+	Links    tplMenuContentSlice
+	SubMenus map[string]*TplMenu
 }
+
+// TplMenuContent contains menu information for a piece of content.
+type TplMenuContent struct {
+	Name   string // The name given in the meta or the page's Title
+	Page   *TplContent
+	Weight int
+}
+
+type tplContentSlice []*TplContent
+type tplMenuContentSlice []*TplMenuContent
 
 type tplTime struct {
 	time.Time
@@ -61,17 +66,18 @@ func newTplSite(s *site) *TplSite {
 	tplSite := TplSite{
 		s:     s,
 		Title: s.cfg.Title,
+		Menus: map[string]*TplMenu{},
 	}
 
 	return &tplSite
 }
 
-func (tplSite *TplSite) addContentCtx(tplCont *TplPage) {
+func (tplSite *TplSite) addContent(tplCont *TplContent) {
 	if tplCont.c.f.isImplicit {
 		return
 	}
 
-	var lcs *tplPageSlice
+	var lcs *tplContentSlice
 	switch tplCont.c.gen.contType {
 	case contPage:
 		lcs = &tplSite.Pages
@@ -98,14 +104,17 @@ func (tplSite *TplSite) contentLoaded() {
 	sort.Sort(tplSite.Pages)
 	sort.Sort(tplSite.Imgs)
 	sort.Sort(tplSite.Blobs)
-	// sort.Sort(tplSiteMenu{tplSite.Menu})
+
+	for _, m := range tplSite.Menus {
+		m.sort()
+	}
 
 	// fmt.Println("pages:", tplSite.Pages)
 	// fmt.Println("imgs:", tplSite.Imgs)
 	// fmt.Println("blobs:", tplSite.Blobs)
 }
 
-func (tplCont *TplPage) init(s *site, c *content) {
+func (tplCont *TplContent) init(s *site, c *content) {
 	tplCont.s = s
 	tplCont.c = c
 	tplCont.Meta = c.meta
@@ -131,7 +140,7 @@ func (tplCont *TplPage) init(s *site, c *content) {
 	}
 }
 
-func (tplCont *TplPage) forLayout(assetOrd *assetOrdering) p2.Context {
+func (tplCont *TplContent) forLayout(assetOrd *assetOrdering) p2.Context {
 	return p2.Context{
 		privSiteKey: tplCont.s,
 		contentKey:  tplCont.c,
@@ -141,19 +150,19 @@ func (tplCont *TplPage) forLayout(assetOrd *assetOrdering) p2.Context {
 	}
 }
 
-func (tplCont *TplPage) forPage() p2.Context {
+func (tplCont *TplContent) forPage() p2.Context {
 	ctx := tplCont.forLayout(&tplCont.c.assetOrd)
 	ctx[isPageKey] = true
 	return ctx
 }
 
 // Summary gets a summary of the content
-func (tplCont *TplPage) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+func (tplCont *TplContent) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	return p2.AsValue(tplCont.c.getSummary())
 }
 
 // Content gets an HTML dump of the content
-func (tplCont *TplPage) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
+func (tplCont *TplContent) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	if _, ok := tplP2Ctx.Public[isPageKey]; ok {
 		tplCont.s.errs.add(tplCont.c.f.srcPath,
 			// TODO(astone): add link to docs page explaining why
@@ -173,41 +182,43 @@ func (tplCont *TplPage) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 }
 
 // IsActive determines if this content is the page currently being generated.
-func (tplCont *TplPage) IsActive(tplP2Ctx *p2.ExecutionContext) bool {
+func (tplCont *TplContent) IsActive(tplP2Ctx *p2.ExecutionContext) bool {
 	return false
 }
 
 // IsParentOf checks if the given content is a parent of this content.
-func (tplCont *TplPage) IsParentOf(o *TplPage) bool {
+func (tplCont *TplContent) IsParentOf(o *TplContent) bool {
 	return false
 }
 
-func (ls tplPageSlice) Len() int      { return len(ls) }
-func (ls tplPageSlice) Swap(a, b int) { ls[a], ls[b] = ls[b], ls[a] }
-
-func (ls tplPageSlice) Less(a, b int) bool {
-	actx := ls[a]
-	bctx := ls[b]
-	ap, af := filepath.Split(actx.c.cpath)
-	bp, bf := filepath.Split(bctx.c.cpath)
+func (tplCont *TplContent) Less(o *TplContent) bool {
+	ap, af := filepath.Split(tplCont.c.cpath)
+	bp, bf := filepath.Split(o.c.cpath)
 
 	if ap == bp {
-		if actx.Date.Equal(bctx.Date.Time) {
+		if tplCont.Date.Equal(o.Date.Time) {
 			return af < bf
 
 		}
 
-		return actx.Date.After(bctx.Date.Time)
+		return tplCont.Date.After(o.Date.Time)
 	}
 
 	return ap < bp
 }
 
-func (ls tplPageSlice) String() string {
+func (s tplContentSlice) Len() int      { return len(s) }
+func (s tplContentSlice) Swap(a, b int) { s[a], s[b] = s[b], s[a] }
+
+func (s tplContentSlice) Less(a, b int) bool {
+	return s[a].Less(s[b])
+}
+
+func (s tplContentSlice) String() string {
 	b := bytes.Buffer{}
 	b.WriteRune('[')
 
-	for i, tplCont := range ls {
+	for i, tplCont := range s {
 		if i > 0 {
 			b.WriteRune(' ')
 		}
@@ -225,6 +236,28 @@ func (ls tplPageSlice) String() string {
 	b.WriteRune(']')
 
 	return b.String()
+}
+
+func (m *TplMenu) sort() {
+	sort.Sort(m.Links)
+
+	for _, sm := range m.SubMenus {
+		sm.sort()
+	}
+}
+
+func (s tplMenuContentSlice) Len() int      { return len(s) }
+func (s tplMenuContentSlice) Swap(a, b int) { s[a], s[b] = s[b], s[a] }
+
+func (s tplMenuContentSlice) Less(a, b int) bool {
+	pa := s[a]
+	pb := s[b]
+
+	if pa.Weight > 0 || pb.Weight > 0 || pa.Weight != pb.Weight {
+		return pa.Weight < pb.Weight
+	}
+
+	return pa.Page.Less(pb.Page)
 }
 
 func (t tplTime) String() string {

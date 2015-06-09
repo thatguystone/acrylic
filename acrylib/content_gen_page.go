@@ -68,7 +68,7 @@ func (gp *contentGenPage) generate(content []byte, dstPath string, s *site, c *c
 		isPage: true,
 	}
 
-	err = lo.execute(c.tplPage.forLayout(&assetOrd), f)
+	err = lo.execute(c.tplCont.forLayout(&assetOrd), f)
 	if err == nil {
 		err = s.assets.writeTrailers(assetOrd, f)
 	}

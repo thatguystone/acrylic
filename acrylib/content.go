@@ -27,7 +27,7 @@ type content struct {
 	cpath    string
 	metaEnd  int
 	meta     *meta
-	tplPage  TplPage
+	tplCont  TplContent
 	gen      contentGenWrapper
 	assetOrd assetOrdering
 	deets    contentDetails
@@ -93,7 +93,7 @@ func (cs *contents) add(f file) error {
 		return err
 	}
 
-	c.tplPage.init(cs.s, c)
+	c.tplCont.init(cs.s, c)
 	if !c.shouldPublish() {
 		return nil
 	}
@@ -102,7 +102,7 @@ func (cs *contents) add(f file) error {
 	cs.srcs[f.srcPath] = c
 	cs.mtx.Unlock()
 
-	cs.s.tplSite.addContentCtx(&c.tplPage)
+	cs.s.tplSite.addContent(&c.tplCont)
 
 	return nil
 }
@@ -265,8 +265,8 @@ func (c *content) shouldPublish() bool {
 		return publish
 	}
 
-	isFuture := !c.tplPage.Date.IsZero() &&
-		c.tplPage.Date.After(c.cs.s.stats.BuildStart)
+	isFuture := !c.tplCont.Date.IsZero() &&
+		c.tplCont.Date.After(c.cs.s.stats.BuildStart)
 	if isFuture && !c.cs.s.cfg.PublishFuture {
 		return false
 	}
@@ -339,7 +339,7 @@ func (c *content) templatize(w io.Writer) error {
 		return err
 	}
 
-	return tpl.ExecuteWriter(c.tplPage.forPage(), w)
+	return tpl.ExecuteWriter(c.tplCont.forPage(), w)
 }
 
 func (c *content) readAll(w io.Writer) error {
