@@ -11,6 +11,10 @@ import (
 type actions struct{}
 
 func main() {
+	if runtime.GOMAXPROCS(-1) == 1 {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	}
+
 	acts := actions{}
 
 	app := cli.NewApp()

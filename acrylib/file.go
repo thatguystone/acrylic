@@ -13,7 +13,7 @@ type file struct {
 }
 
 func (f *file) isIndex() bool {
-	return strings.HasPrefix(f.srcPath, "index.")
+	return strings.HasPrefix(filepath.Base(f.srcPath), "index.")
 }
 
 func (f *file) isMeta() bool {

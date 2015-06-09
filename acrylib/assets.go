@@ -396,7 +396,7 @@ func (at *assetType) combine() (ok bool) {
 			continue
 		}
 
-		list, err := f.Readdir(1)
+		list, err := f.Readdirnames(1)
 		f.Close()
 
 		// If the dir the file was in is now empty, remove the dir, too

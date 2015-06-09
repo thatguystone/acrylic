@@ -15,14 +15,14 @@ import (
 )
 
 type site struct {
-	cfg    *Config
-	min    *minify.Minify
-	mtx    sync.Mutex
-	cs     contents
-	d      data
-	l      map[string]*layout
-	assets assets
-	lsctx  *LayoutSiteCtx
+	cfg     *Config
+	min     *minify.Minify
+	mtx     sync.Mutex
+	cs      contents
+	d       data
+	l       map[string]*layout
+	assets  assets
+	tplSite *TplSite
 
 	wg        sync.WaitGroup
 	contentCh chan file
@@ -51,9 +51,15 @@ func init() {
 }
 
 // TODO(astone): menus
+// TODO(astone): dirs instead of .html files
 // TODO(astone): sitemap.xml
 // TODO(astone): rss feeds
 // TODO(astone): code highlighting
+// TODO(astone): live reload
+// TODO(astone): data files
+// TODO(astone): pagination (http://gohugo.io/extras/pagination/)
+// TODO(astone): permalinks (http://gohugo.io/extras/permalinks/)
+// TODO(astone): table of contents (http://gohugo.io/extras/toc/)
 
 func newSite(cfg *Config) *site {
 	s := &site{
@@ -62,7 +68,7 @@ func newSite(cfg *Config) *site {
 		l:   map[string]*layout{},
 	}
 
-	s.lsctx = newLayoutSiteCtx(s)
+	s.tplSite = newTplSite(s)
 
 	s.cs.init(s)
 	s.assets.init(s)
@@ -88,7 +94,7 @@ func (s *site) build() (BuildStats, Errors) {
 
 	s.stopContentReader()
 
-	s.lsctx.contentLoaded()
+	s.tplSite.contentLoaded()
 
 	if !s.errs.has() {
 		s.generate()
@@ -237,11 +243,10 @@ func (s *site) loadLayoutDir(dir string, isTheme bool, depth int) {
 	}
 
 	err := s.walkRoot(dir,
-		func(f file) error {
+		func(f file) {
 			if filepath.Ext(f.srcPath) != ".html" {
 				f.dstPath = dstPath(f.srcPath)
 				s.addContent(f, false)
-				return nil
 			}
 
 			path := fDropRoot(s.cfg.Root, f.srcPath)
@@ -257,12 +262,7 @@ func (s *site) loadLayoutDir(dir string, isTheme bool, depth int) {
 				which:    which,
 				filePath: f.srcPath,
 			}
-
-			return nil
-		},
-		func(dir string, indexes []file) error {
-			return s.checkDirIndexes(false, dir, dstPath, indexes)
-		})
+		}, nil)
 
 	if err != nil {
 		s.errs.add(dir, err)
@@ -275,48 +275,31 @@ func (s *site) loadContent() {
 		return fDropFirst(path)
 	}
 
+	root := filepath.Join(s.cfg.Root, s.cfg.ContentDir)
+
 	err := s.walkRoot(s.cfg.ContentDir,
-		func(f file) error {
+		func(f file) {
 			f.dstPath = dstPath(f.srcPath)
 			s.addContent(f, true)
-			return nil
 		},
-		func(dir string, indexes []file) error {
-			return s.checkDirIndexes(true, dir, dstPath, indexes)
+		func(dir string) {
+			f := file{
+				srcPath:    filepath.Join(dir, "index.html"),
+				layoutName: "_list",
+				isImplicit: true,
+			}
+
+			if dir == root {
+				f.layoutName = "_index"
+			}
+
+			f.dstPath = dstPath(f.srcPath)
+			s.addContent(f, true)
 		})
 
 	if err != nil {
 		s.errs.add(s.cfg.ContentDir, err)
 	}
-}
-
-func (s *site) checkDirIndexes(
-	isContent bool,
-	dir string,
-	dstPath func(string) string,
-	indexes []file) error {
-
-	if len(indexes) == 0 {
-		indexes = append(indexes, file{
-			srcPath:    filepath.Join(dir, "index.html"),
-			isImplicit: true,
-		})
-	}
-
-	root := filepath.Join(s.cfg.Root, s.cfg.ContentDir)
-
-	for _, f := range indexes {
-		f.layoutName = "_list"
-
-		if dir == root {
-			f.layoutName = "_index"
-		}
-
-		f.dstPath = dstPath(f.srcPath)
-		s.addContent(f, isContent)
-
-	}
-	return nil
 }
 
 func (s *site) loadData() {
@@ -359,8 +342,8 @@ func (s *site) generate() {
 
 func (s *site) walkRoot(
 	p string,
-	fCb func(file) error,
-	indexesCb func(string, []file) error) error {
+	fCb func(file),
+	noIndexCb func(string)) error {
 
 	p = filepath.Join(s.cfg.Root, p)
 
@@ -381,7 +364,7 @@ func (s *site) walkRoot(
 			return err
 		}
 
-		var indexes []file
+		noIndex := true
 
 		for _, info := range infos {
 			p := filepath.Join(p, info.Name())
@@ -398,11 +381,10 @@ func (s *site) walkRoot(
 				}
 
 				if f.isIndex() {
-					indexes = append(indexes, f)
-					continue
+					noIndex = false
 				}
 
-				err = fCb(f)
+				fCb(f)
 			}
 
 			if err != nil {
@@ -410,7 +392,11 @@ func (s *site) walkRoot(
 			}
 		}
 
-		return indexesCb(p, indexes)
+		if noIndex && noIndexCb != nil {
+			noIndexCb(p)
+		}
+
+		return nil
 	}
 
 	return walk(p)
@@ -449,8 +435,8 @@ func (s *site) findLayout(cpath, which string, failIfNotFound bool) *layout {
 	panic(fmt.Errorf("unknown template requested: %s", filepath.Join(cpath, which)))
 }
 
-func (s *site) findContent(currFile, path string) (*content, error) {
-	return s.cs.find(currFile, path)
+func (s *site) findContent(c *content, currFile, path string) (*content, error) {
+	return s.cs.find(c, currFile, path)
 }
 
 func (s *site) fCreate(path string) (*os.File, error) {

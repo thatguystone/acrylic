@@ -170,7 +170,7 @@ func (n imgSrcTagNode) Execute(
 		return perr
 	}
 
-	ic, err := s.findContent(currFile, img.src)
+	ic, err := s.findContent(c, currFile, img.src)
 	if err != nil {
 		s.errs.add(currFile, fmt.Errorf("img: file not found: %v", err))
 		return nil

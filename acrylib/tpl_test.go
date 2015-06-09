@@ -28,7 +28,7 @@ func TestLayoutContextSorting(t *testing.T) {
 	defer tt.cleanup()
 
 	sorted := true
-	for i, p := range tt.lastSite.lsctx.Pages {
+	for i, p := range tt.lastSite.tplSite.Pages {
 		if filepath.Join(tt.cfg.Root, testFiles[i].p) != p.c.f.srcPath {
 			sorted = false
 			break
@@ -45,6 +45,6 @@ func TestLayoutContextSorting(t *testing.T) {
 			"Expected: %s\n"+
 			"     Got: %s",
 			"["+strings.Join(fs, " ")+"]",
-			tt.lastSite.lsctx.Pages)
+			tt.lastSite.tplSite.Pages)
 	}
 }

@@ -73,13 +73,13 @@ func (n urlNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Erro
 
 	currFile := n.contentRel(c)
 
-	c, err := s.findContent(currFile, v.String())
+	fc, err := s.findContent(c, currFile, v.String())
 	if err != nil {
 		s.errs.add(c.f.srcPath, fmt.Errorf("url: file not found: %s", err))
 		return nil
 	}
 
-	path := c.gen.generatePage()
+	path := fc.gen.generatePage()
 	relPath := c.relDest(path)
 	_, err = w.WriteString(relPath)
 
@@ -107,7 +107,7 @@ func (n assetTagNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2
 		relPath := path
 
 		if !isRemoteURL(path) {
-			relContent, err := s.findContent(currFile, path)
+			relContent, err := s.findContent(c, currFile, path)
 			if err != nil {
 				s.errs.add(c.f.srcPath,
 					fmt.Errorf("%s: file not found: %s", n.what, err))
@@ -155,7 +155,7 @@ func (n assetAllNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2
 	return nil
 }
 
-func tagParseExpressions(
+func p2TagParseExpressions(
 	d *p2.Parser,
 	s *p2.Token,
 	args *p2.Parser) ([]p2.IEvaluator, *p2.Error) {
@@ -175,15 +175,13 @@ func tagParseExpressions(
 }
 
 func urlTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
-	if args.Count() != 1 {
-		return nil, args.Error(
-			fmt.Sprintf("url: only 1 argument expected, not %d", args.Count()),
-			nil)
-	}
-
 	exp, err := args.ParseExpression()
 	if err != nil {
 		return nil, err
+	}
+
+	if args.Remaining() != 0 {
+		return nil, args.Error("url: only 1 argument expected", nil)
 	}
 
 	n := urlNode{
@@ -201,7 +199,7 @@ func assetTag(
 	s *p2.Token,
 	args *p2.Parser) (assetTagNode, *p2.Error) {
 
-	srcs, err := tagParseExpressions(d, s, args)
+	srcs, err := p2TagParseExpressions(d, s, args)
 	if err != nil {
 		return assetTagNode{}, err
 	}

@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	p2 "github.com/flosch/pongo2"
@@ -26,7 +27,7 @@ type content struct {
 	cpath    string
 	metaEnd  int
 	meta     *meta
-	lcctx    LayoutContentCtx
+	tplPage  TplPage
 	gen      contentGenWrapper
 	assetOrd assetOrdering
 	deets    contentDetails
@@ -92,7 +93,7 @@ func (cs *contents) add(f file) error {
 		return err
 	}
 
-	c.lcctx.init(cs.s, c)
+	c.tplPage.init(cs.s, c)
 	if !c.shouldPublish() {
 		return nil
 	}
@@ -101,25 +102,36 @@ func (cs *contents) add(f file) error {
 	cs.srcs[f.srcPath] = c
 	cs.mtx.Unlock()
 
-	cs.s.lsctx.addContentCtx(&c.lcctx)
+	cs.s.tplSite.addContentCtx(&c.tplPage)
 
 	return nil
 }
 
-func (cs *contents) find(currFile, rel string) (*content, error) {
+func (cs *contents) find(c *content, currFile, rel string) (*content, error) {
 	// No lock needed: find should only be called after ALL content has been
 	// added
-	src := filepath.Join(currFile, "../", rel)
-	c := cs.srcs[src]
 
-	if c == nil {
+	src := ""
+	if strings.HasPrefix(rel, p2ContentRelPfx) {
+		rel = rel[len(p2ContentRelPfx):]
+		src = filepath.Join(c.f.srcPath, "../", rel)
+	} else {
+		src = filepath.Join(currFile, "../", rel)
+	}
+
+	fc := cs.srcs[src]
+
+	if fc == nil {
 		return nil, fmt.Errorf("content `%s` from rel path `%s` not found", src, rel)
 	}
 
-	return c, nil
+	return fc, nil
 }
 
-func (cs *contents) claimDest(dst string, c *content) (alreadyClaimed bool, err error) {
+func (cs *contents) claimDest(dst string, c *content) (
+	alreadyClaimed bool,
+	err error) {
+
 	cs.mtx.Lock()
 
 	if co, ok := cs.dsts[dst]; ok {
@@ -253,7 +265,8 @@ func (c *content) shouldPublish() bool {
 		return publish
 	}
 
-	isFuture := !c.lcctx.Date.IsZero() && c.lcctx.Date.After(c.cs.s.stats.BuildStart)
+	isFuture := !c.tplPage.Date.IsZero() &&
+		c.tplPage.Date.After(c.cs.s.stats.BuildStart)
 	if isFuture && !c.cs.s.cfg.PublishFuture {
 		return false
 	}
@@ -326,7 +339,7 @@ func (c *content) templatize(w io.Writer) error {
 		return err
 	}
 
-	return tpl.ExecuteWriter(c.lcctx.forPage(), w)
+	return tpl.ExecuteWriter(c.tplPage.forPage(), w)
 }
 
 func (c *content) readAll(w io.Writer) error {
