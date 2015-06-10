@@ -56,10 +56,10 @@ func init() {
 // TODO(astone): rss feeds
 // TODO(astone): code highlighting
 // TODO(astone): live reload
-// TODO(astone): data files
 // TODO(astone): pagination (http://gohugo.io/extras/pagination/)
 // TODO(astone): permalinks (http://gohugo.io/extras/permalinks/)
 // TODO(astone): table of contents (http://gohugo.io/extras/toc/)
+// TODO(astone): get parent content for bread crumbs
 
 func newSite(cfg *Config) *site {
 	s := &site{

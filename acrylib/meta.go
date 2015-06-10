@@ -1,15 +1,42 @@
 package acrylib
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/BurntSushi/toml"
+	"github.com/DisposaBoy/JsonConfigReader"
 	"gopkg.in/yaml.v2"
 )
 
 type meta map[string]interface{}
 
-func (m *meta) merge(b []byte) error {
-	return yaml.Unmarshal(b, m)
+type metaType int
+
+const (
+	metaYaml metaType = iota
+	metaToml
+	metaJson
+	metaUnknown
+)
+
+func (m *meta) merge(b []byte, mt metaType) error {
+	switch mt {
+	case metaYaml:
+		return yaml.Unmarshal(b, m)
+	case metaToml:
+		return toml.Unmarshal(b, m)
+	case metaJson:
+		r := JsonConfigReader.New(bytes.NewReader(b))
+		dec := json.NewDecoder(r)
+		return dec.Decode(m)
+
+	default:
+		return fmt.Errorf("unrecognized meta type: %d", mt)
+	}
+
 }
 
 func (m *meta) has() bool {
@@ -53,4 +80,21 @@ func (m meta) publish() (bool, bool) {
 	}
 
 	return b, true
+}
+
+func (m meta) menu() interface{} {
+	return m["menu"]
+}
+
+func metaTypeFromString(t string) metaType {
+	switch t {
+	case "toml":
+		return metaToml
+	case "yaml":
+		return metaYaml
+	case "json":
+		return metaJson
+	default:
+		return metaUnknown
+	}
 }

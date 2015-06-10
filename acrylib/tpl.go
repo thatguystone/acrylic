@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -17,11 +18,11 @@ import (
 type TplSite struct {
 	s     *site
 	mtx   sync.Mutex
-	Title string              // Title of the site
-	Menus map[string]*TplMenu // Menus available for use on the site
-	Pages tplContentSlice     // Sorted list of all pages
-	Imgs  tplContentSlice     // Sorted list of all images
-	Blobs tplContentSlice     // Sorted list of all blobs
+	Title string          // Title of the site
+	Menus TplMenus        // Menus available for use on the site
+	Pages tplContentSlice // Sorted list of all pages
+	Imgs  tplContentSlice // Sorted list of all images
+	Blobs tplContentSlice // Sorted list of all blobs
 }
 
 // TplContent contains the values exposed to templates as `Page`.
@@ -31,19 +32,29 @@ type TplContent struct {
 	Title string
 	Date  tplTime
 	Meta  *meta
+	Menus tplMenuContentSlice // Which menus this content is in
 }
 
-// TplMenu contains site-wide menuing information.
+// TplMenus contains menu mappings.
+type TplMenus map[string]*TplMenu
+
+// TplMenu contains information about a specific menu.
 type TplMenu struct {
-	Name     string
 	Links    tplMenuContentSlice
-	SubMenus map[string]*TplMenu
+	Children TplMenus
 }
 
 // TplMenuContent contains menu information for a piece of content.
 type TplMenuContent struct {
-	Name   string // The name given in the meta or the page's Title
-	Page   *TplContent
+	menuName string
+	Page     *TplContent
+	TplMenuOpts
+}
+
+// TplMenuOpts contains the options that may be used when creating a menu in
+// metadata.
+type TplMenuOpts struct {
+	Title  string // The name given in the meta or the page's Title
 	Weight int
 }
 
@@ -72,9 +83,9 @@ func newTplSite(s *site) *TplSite {
 	return &tplSite
 }
 
-func (tplSite *TplSite) addContent(tplCont *TplContent) {
+func (tplSite *TplSite) addContent(tplCont *TplContent) error {
 	if tplCont.c.f.isImplicit {
-		return
+		return nil
 	}
 
 	var lcs *tplContentSlice
@@ -90,7 +101,7 @@ func (tplSite *TplSite) addContent(tplCont *TplContent) {
 	}
 
 	if lcs == nil {
-		return
+		return nil
 	}
 
 	tplSite.mtx.Lock()
@@ -98,12 +109,23 @@ func (tplSite *TplSite) addContent(tplCont *TplContent) {
 	*lcs = append(*lcs, tplCont)
 
 	tplSite.mtx.Unlock()
+
+	err := tplSite.Menus.add(tplCont, &tplSite.mtx)
+	if err != nil {
+		err = fmt.Errorf("menu: %v", err)
+	}
+
+	return err
 }
 
 func (tplSite *TplSite) contentLoaded() {
 	sort.Sort(tplSite.Pages)
 	sort.Sort(tplSite.Imgs)
 	sort.Sort(tplSite.Blobs)
+
+	if len(tplSite.Menus) == 0 {
+		// Use first-level content as main menu
+	}
 
 	for _, m := range tplSite.Menus {
 		m.sort()
@@ -182,12 +204,20 @@ func (tplCont *TplContent) Content(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 }
 
 // IsActive determines if this content is the page currently being generated.
-func (tplCont *TplContent) IsActive(tplP2Ctx *p2.ExecutionContext) bool {
-	return false
+func (tplCont *TplContent) Active(tplP2Ctx *p2.ExecutionContext) bool {
+	return tplCont.c == tplP2Ctx.Public[contentKey]
 }
 
-// IsParentOf checks if the given content is a parent of this content.
-func (tplCont *TplContent) IsParentOf(o *TplContent) bool {
+// IsMenu determines if this content is in the menu with the given name, or
+// any of that menu's children menus.
+func (tplCont *TplContent) InSubMenu(name string) bool {
+	sub := name + "."
+
+	for _, m := range tplCont.Menus {
+		if strings.HasPrefix(m.menuName, sub) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -205,6 +235,27 @@ func (tplCont *TplContent) Less(o *TplContent) bool {
 	}
 
 	return ap < bp
+}
+
+func (tmc *TplMenuContent) Active(tplP2Ctx *p2.ExecutionContext) bool {
+	return tmc.Page.Active(tplP2Ctx)
+}
+
+func (tmc *TplMenuContent) SubActive(tplP2Ctx *p2.ExecutionContext) bool {
+	if tmc.Active(tplP2Ctx) {
+		return true
+	}
+
+	actPage := tplP2Ctx.Public["Page"].(*TplContent)
+
+	sub := tmc.menuName + "."
+	for _, actMenu := range actPage.Menus {
+		if strings.HasPrefix(actMenu.menuName, sub) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s tplContentSlice) Len() int      { return len(s) }
@@ -238,10 +289,151 @@ func (s tplContentSlice) String() string {
 	return b.String()
 }
 
+func (ms TplMenus) Get(path string) *TplMenu {
+	return ms.get(path, false)
+}
+
+func (ms TplMenus) get(path string, orCreate bool) *TplMenu {
+	part := path
+
+	dot := strings.Index(path, ".")
+	if dot == -1 {
+		path = ""
+	} else {
+		part = path[:dot]
+		path = path[dot+1:]
+	}
+
+	m, ok := ms[part]
+	if !ok {
+		if !orCreate {
+			return nil
+		}
+
+		m = &TplMenu{
+			Children: TplMenus{},
+		}
+		ms[part] = m
+	}
+
+	if len(path) > 0 {
+		return m.Children.get(path, orCreate)
+	}
+
+	return m
+}
+
+func (ms TplMenus) add(tplCont *TplContent, mtx *sync.Mutex) error {
+	mm := tplCont.Meta.menu()
+	if mm == nil {
+		return nil
+	}
+
+	addOpts := func(k string, opts TplMenuOpts) {
+		mtx.Lock()
+
+		m := ms.get(k, true)
+
+		mCont := &TplMenuContent{
+			menuName:    k,
+			Page:        tplCont,
+			TplMenuOpts: opts,
+		}
+		m.Links = append(m.Links, mCont)
+		tplCont.Menus = append(tplCont.Menus, mCont)
+
+		mtx.Unlock()
+	}
+
+	addString := func(k string) {
+		addOpts(k, TplMenuOpts{
+			Title:  tplCont.Title,
+			Weight: 0,
+		})
+	}
+
+	rv := reflect.ValueOf(mm)
+	switch rv.Kind() {
+	case reflect.String:
+		addString(mm.(string))
+
+	case reflect.Slice:
+		for _, vi := range mm.([]interface{}) {
+			if v, ok := vi.(string); !ok {
+				return fmt.Errorf("values in array must be strings, not %v=%v",
+					reflect.TypeOf(vi), vi)
+			} else {
+				addString(v)
+			}
+		}
+
+	case reflect.Map:
+		keys := rv.MapKeys()
+		for _, kv := range keys {
+			k, ok := kv.Interface().(string)
+			if !ok {
+				return fmt.Errorf("keys in map must be strings, not %v=%v",
+					kv.Type(), kv.Interface())
+			}
+
+			kv = rv.MapIndex(kv)
+			if kv.IsNil() {
+				addString(k)
+				continue
+			}
+
+			kv = reflect.ValueOf(kv.Interface())
+			if kv.Kind() != reflect.Map {
+				return fmt.Errorf("menu values must be maps, not %v=%v",
+					kv.Type(), kv.Interface())
+			}
+
+			c := TplMenuOpts{}
+			opts := kv.MapKeys()
+			for _, optKv := range opts {
+				optK, ok := optKv.Interface().(string)
+				if !ok {
+					return fmt.Errorf("menu keys must be strings, not %v=%v",
+						kv.Type(), kv.Interface())
+				}
+
+				optV := kv.MapIndex(optKv)
+				optVi := optV.Interface()
+				switch strings.ToLower(optK) {
+				case "title":
+					c.Title, ok = optVi.(string)
+					if !ok {
+						return fmt.Errorf("title key must have a string value, not %v=%v",
+							optV.Type(), optVi)
+					}
+
+				case "weight":
+					switch wv := optVi.(type) {
+					case int:
+						c.Weight = wv
+
+					case float64:
+						c.Weight = int(wv)
+
+					default:
+						return fmt.Errorf("weight key must have an integer value, "+
+							"not %v=%v",
+							optV.Type(), optVi)
+					}
+				}
+			}
+
+			addOpts(k, c)
+		}
+	}
+
+	return nil
+}
+
 func (m *TplMenu) sort() {
 	sort.Sort(m.Links)
 
-	for _, sm := range m.SubMenus {
+	for _, sm := range m.Children {
 		sm.sort()
 	}
 }
@@ -253,8 +445,8 @@ func (s tplMenuContentSlice) Less(a, b int) bool {
 	pa := s[a]
 	pb := s[b]
 
-	if pa.Weight > 0 || pb.Weight > 0 || pa.Weight != pb.Weight {
-		return pa.Weight < pb.Weight
+	if pa.Weight != pb.Weight {
+		return pa.Weight > pb.Weight
 	}
 
 	return pa.Page.Less(pb.Page)

@@ -48,7 +48,8 @@ const (
 )
 
 var (
-	metaDelim = []byte("---")
+	metaDelim         = []byte("---")
+	metaHeaderTypeLen = len(metaDelim) + 1 + 4
 
 	bannedContentTags = []string{
 		"css_all",
@@ -102,9 +103,7 @@ func (cs *contents) add(f file) error {
 	cs.srcs[f.srcPath] = c
 	cs.mtx.Unlock()
 
-	cs.s.tplSite.addContent(&c.tplCont)
-
-	return nil
+	return cs.s.tplSite.addContent(&c.tplCont)
 }
 
 func (cs *contents) find(c *content, currFile, rel string) (*content, error) {
@@ -178,9 +177,8 @@ func (c *content) load() error {
 	defer f.Close()
 	r := bufio.NewReader(f)
 
-	del := make([]byte, len(metaDelim))
-
-	i, err := r.Read(del)
+	delim := make([]byte, len(metaDelim))
+	i, err := r.Read(delim)
 	if err != nil {
 		if err != io.EOF {
 			return err
@@ -189,7 +187,7 @@ func (c *content) load() error {
 		return nil
 	}
 
-	if !bytes.Equal(metaDelim, del[:i]) {
+	if !bytes.HasPrefix(metaDelim, delim[:i]) {
 		return nil
 	}
 
@@ -237,11 +235,26 @@ func (c *content) load() error {
 
 func (c *content) processMeta(m []byte, isMetaFile bool) error {
 	start := 3
+	mt := metaYaml
+
 	if !bytes.HasPrefix(m, metaDelim) {
 		if !isMetaFile {
 			return nil
 		}
+
 		start = 0
+	} else {
+		checkType := len(m) > metaHeaderTypeLen &&
+			!bytes.Contains(m[:metaHeaderTypeLen], []byte("\n"))
+		if checkType {
+			dec := string(m[len(metaDelim)+1 : metaHeaderTypeLen])
+			mt = metaTypeFromString(dec)
+			if mt == metaUnknown {
+				return fmt.Errorf("unrecognized metadata decoder: %s", dec)
+			}
+
+			start = metaHeaderTypeLen
+		}
 	}
 
 	end := bytes.Index(m[3:], metaDelim)
@@ -256,7 +269,12 @@ func (c *content) processMeta(m []byte, isMetaFile bool) error {
 	}
 
 	m = bytes.TrimSpace(m[start:end])
-	return c.meta.merge(m)
+	err := c.meta.merge(m, mt)
+	if err != nil {
+		return fmt.Errorf("invalid metadata: %v", err)
+	}
+
+	return nil
 }
 
 func (c *content) shouldPublish() bool {
