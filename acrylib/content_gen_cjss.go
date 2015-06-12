@@ -1,6 +1,9 @@
 package acrylib
 
-import "bytes"
+import (
+	"bytes"
+	"path/filepath"
+)
 
 type contentGenCJSS struct {
 	what     string
@@ -65,13 +68,12 @@ func getContentCJSSGener(
 	return cjss, contType
 }
 
-func (cjss *contentGenCJSS) claimDest(c *content) (dstPath string, alreadyClaimed bool, err error) {
+func (cjss *contentGenCJSS) finalExt(c *content) string {
 	if cjss.doRender {
-		dstPath, alreadyClaimed, err = c.claimDest(cjss.ext)
-	} else {
-		dstPath, alreadyClaimed, err = c.claimDest("")
+		return cjss.ext
 	}
-	return
+
+	return filepath.Ext(c.f.srcPath)
 }
 
 func (cjss *contentGenCJSS) render(s *site, c *content) (content []byte, err error) {

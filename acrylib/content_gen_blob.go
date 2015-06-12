@@ -1,5 +1,7 @@
 package acrylib
 
+import "path/filepath"
+
 type contentGenBlob struct {
 }
 
@@ -7,9 +9,8 @@ func getBlobGener(s *site, c *content, ext string) (contentGener, contentType) {
 	return &contentGenBlob{}, contBlob
 }
 
-func (gb *contentGenBlob) claimDest(c *content) (dstPath string, alreadyClaimed bool, err error) {
-	dstPath, alreadyClaimed, err = c.claimDest("")
-	return
+func (gb *contentGenBlob) finalExt(c *content) string {
+	return filepath.Ext(c.f.srcPath)
 }
 
 func (gb *contentGenBlob) render(s *site, c *content) (content []byte, err error) {

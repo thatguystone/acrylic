@@ -26,7 +26,7 @@ func TestContentAnalyzeShortSummary(t *testing.T) {
 
 	loremIpsum := "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque metus enim, efficitur ut convallis id, venenatis feugiat urna. Pellentesque pulvinar iaculis ipsum ac bibendum. Suspendisse sit amet ipsum eget arcu dapibus pulvinar. Praesent at tortor erat. Curabitur feugiat viverra orci non commodo. Nunc dictum mauris ut ultrices tincidunt. Donec sodales leo nunc, et faucibus nisi vehicula et. Nunc posuere orci quam, nec molestie nulla consectetur id."
 
-	cfg := testConfig()
+	cfg := testConfig(false)
 	cfg.SummaryWords = 10
 	deets := testContentAnalyze(t, cfg, loremIpsum)
 	a.Equal(

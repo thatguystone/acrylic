@@ -15,10 +15,11 @@ import (
 )
 
 type contents struct {
-	s    *site
-	mtx  sync.Mutex
-	srcs map[string]*content // All available content: srcPath -> content
-	dsts map[string]*content // All rendered content: dstPath -> content
+	s           *site
+	mtx         sync.Mutex
+	srcs        map[string]*content // All available content: srcPath -> content
+	dsts        map[string]*content // All rendered content: dstPath -> content
+	dirHasIndex map[string]*bool    // Which directories have index pages
 }
 
 type content struct {
@@ -68,6 +69,7 @@ func (cs *contents) init(s *site) {
 	cs.s = s
 	cs.srcs = map[string]*content{}
 	cs.dsts = map[string]*content{}
+	cs.dirHasIndex = map[string]*bool{}
 }
 
 func (cs *contents) add(f file) error {
@@ -76,9 +78,7 @@ func (cs *contents) add(f file) error {
 	}
 
 	s := cs.s
-	ext := filepath.Ext(f.srcPath)
 	cpath := fChangeExt(f.dstPath, "")
-	f.dstPath = filepath.Join(s.cfg.Root, s.cfg.PublicDir, f.dstPath)
 
 	c := &content{
 		cs:    cs,
@@ -87,7 +87,15 @@ func (cs *contents) add(f file) error {
 		meta:  &meta{},
 	}
 
-	c.gen = getContentGener(s, c, ext)
+	c.gen = getContentGener(s, c, filepath.Ext(c.f.srcPath))
+
+	if s.cfg.UglyURLs || !c.gen.is(contPage) || c.f.isIndex() {
+		c.f.dstPath = filepath.Join(s.cfg.Root, s.cfg.PublicDir, c.f.dstPath)
+	} else {
+		c.f.dstPath = filepath.Join(s.cfg.Root, s.cfg.PublicDir, cpath, "index.html")
+	}
+
+	c.f.dstPath = fChangeExt(c.f.dstPath, c.gen.gener.finalExt(c))
 
 	err := c.load()
 	if err != nil {
@@ -99,11 +107,59 @@ func (cs *contents) add(f file) error {
 		return nil
 	}
 
+	dstDir := filepath.Dir(c.f.dstPath)
+
 	cs.mtx.Lock()
-	cs.srcs[f.srcPath] = c
+
+	has, ok := cs.dirHasIndex[dstDir]
+	if !ok {
+		has = new(bool)
+		cs.dirHasIndex[dstDir] = has
+	}
+
+	*has = *has || (c.gen.is(contPage) && c.f.isIndex())
+	cs.srcs[c.f.srcPath] = c
+
 	cs.mtx.Unlock()
 
 	return cs.s.tplSite.addContent(&c.tplCont)
+}
+
+func (cs *contents) setupImplicitPages() {
+	root := filepath.Join(cs.s.cfg.Root, cs.s.cfg.PublicDir)
+
+	if _, ok := cs.dirHasIndex[root]; !ok {
+		cs.dirHasIndex[root] = new(bool)
+	}
+
+	for dir, hasIndex := range cs.dirHasIndex {
+		if *hasIndex {
+			continue
+		}
+
+		dst := filepath.Join(dir, "index.html")
+
+		if _, ok := cs.dsts[dst]; ok {
+			continue
+		}
+
+		base := fDropRoot(root, dst)
+
+		f := file{
+			srcPath:    filepath.Join(cs.s.cfg.Root, cs.s.cfg.ContentDir, base),
+			dstPath:    base,
+			layoutName: "_list",
+			isImplicit: true,
+		}
+
+		if dir == root {
+			f.layoutName = "_index"
+		}
+
+		cs.add(f)
+	}
+
+	cs.dirHasIndex = nil
 }
 
 func (cs *contents) find(c *content, currFile, rel string) (*content, error) {
@@ -332,12 +388,13 @@ func (c *content) relDest(otherPath string) string {
 	return filepath.Join(rel, f)
 }
 
-func (c *content) claimDest(ext string) (string, bool, error) {
-	dst := c.f.dstPath
-	if ext != "" {
-		dst = fChangeExt(dst, ext)
-	}
+func (c *content) claimDest() (string, bool, error) {
+	alreadyClaimed, err := c.cs.claimDest(c.f.dstPath, c)
+	return c.f.dstPath, alreadyClaimed, err
+}
 
+func (c *content) claimOtherExt(ext string) (string, bool, error) {
+	dst := fChangeExt(c.f.dstPath, ext)
 	alreadyClaimed, err := c.cs.claimDest(dst, c)
 	return dst, alreadyClaimed, err
 }

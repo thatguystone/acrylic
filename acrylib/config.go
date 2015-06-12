@@ -24,6 +24,11 @@ type Config struct {
 	// If content dated in the future should be generated and published
 	PublishFuture bool
 
+	// If content should be generated to .html files instead of
+	// dir/index.html. For example, generate /content/about.html to
+	// /public/about.html instead of /public/about/index.html.
+	UglyURLs bool
+
 	FileMode   os.FileMode // For generated content. Defaults to 0640.
 	DataDir    string      `yaml:"dataDir"`    // Defaults to "data"
 	ContentDir string      `yaml:"contentDir"` // Defaults to "content"

@@ -51,7 +51,6 @@ func init() {
 }
 
 // TODO(astone): menus
-// TODO(astone): dirs instead of .html files
 // TODO(astone): sitemap.xml
 // TODO(astone): rss feeds
 // TODO(astone): code highlighting
@@ -94,9 +93,12 @@ func (s *site) build() (BuildStats, Errors) {
 
 	s.stopContentReader()
 
-	s.tplSite.contentLoaded()
+	if !s.errs.has() {
+		s.cs.setupImplicitPages()
+	}
 
 	if !s.errs.has() {
+		s.tplSite.contentLoaded()
 		s.generate()
 	}
 
@@ -119,13 +121,17 @@ func (s *site) addContent(f file, isContent bool) {
 
 	if isContent {
 		if res := fPathCheckFor(f.dstPath, reservedPaths...); res != "" {
-			s.errs.add(f.srcPath, fmt.Errorf("use of reserved path `%s` is not allowed", res))
+			s.errs.add(f.srcPath,
+				fmt.Errorf("use of reserved path `%s` is not allowed",
+					res))
 			return
 		}
 	}
 
 	if res := fPathCheckFor(f.dstPath, reservedInternalPaths...); res != "" {
-		s.errs.add(f.srcPath, fmt.Errorf("use of reserved path `%s` is not allowed", res))
+		s.errs.add(f.srcPath,
+			fmt.Errorf("use of reserved path `%s` is not allowed",
+				res))
 		return
 	}
 
@@ -262,7 +268,7 @@ func (s *site) loadLayoutDir(dir string, isTheme bool, depth int) {
 				which:    which,
 				filePath: f.srcPath,
 			}
-		}, nil)
+		})
 
 	if err != nil {
 		s.errs.add(dir, err)
@@ -275,24 +281,8 @@ func (s *site) loadContent() {
 		return fDropFirst(path)
 	}
 
-	root := filepath.Join(s.cfg.Root, s.cfg.ContentDir)
-
 	err := s.walkRoot(s.cfg.ContentDir,
 		func(f file) {
-			f.dstPath = dstPath(f.srcPath)
-			s.addContent(f, true)
-		},
-		func(dir string) {
-			f := file{
-				srcPath:    filepath.Join(dir, "index.html"),
-				layoutName: "_list",
-				isImplicit: true,
-			}
-
-			if dir == root {
-				f.layoutName = "_index"
-			}
-
 			f.dstPath = dstPath(f.srcPath)
 			s.addContent(f, true)
 		})
@@ -340,11 +330,7 @@ func (s *site) generate() {
 	wg.Wait()
 }
 
-func (s *site) walkRoot(
-	p string,
-	fCb func(file),
-	noIndexCb func(string)) error {
-
+func (s *site) walkRoot(p string, fCb func(file)) error {
 	p = filepath.Join(s.cfg.Root, p)
 
 	if !dExists(p) {
@@ -364,8 +350,6 @@ func (s *site) walkRoot(
 			return err
 		}
 
-		noIndex := true
-
 		for _, info := range infos {
 			p := filepath.Join(p, info.Name())
 
@@ -380,20 +364,12 @@ func (s *site) walkRoot(
 					continue
 				}
 
-				if f.isIndex() {
-					noIndex = false
-				}
-
 				fCb(f)
 			}
 
 			if err != nil {
 				return err
 			}
-		}
-
-		if noIndex && noIndexCb != nil {
-			noIndexCb(p)
 		}
 
 		return nil

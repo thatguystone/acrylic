@@ -9,7 +9,7 @@ import (
 func TestContentAutoMetas(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig()
+	cfg := testConfig(false)
 	cfg.DateFormat = "01-02-2006"
 
 	pages := append([]testFile{}, basicSite...)
@@ -48,19 +48,19 @@ func TestContentAutoMetas(t *testing.T) {
 	)...)
 	defer tt.cleanup()
 
-	tt.contents("public/date/title-with_some-stuff-or-another.html",
+	tt.contents("date/title-with_some-stuff-or-another.html",
 		`06-05-2015 -- Title with Some Stuff or Another`)
 
-	tt.contents("public/date/2015-06-06-title-with-date.html",
+	tt.contents("date/2015-06-06-title-with-date.html",
 		`06-06-2015 -- Title with Date`)
 
-	tt.contents("public/date/2015-06-07.html",
+	tt.contents("date/2015-06-07.html",
 		`06-07-2015 -- stuffs and stuffs`)
 
-	tt.contents("public/summary/meta.html",
+	tt.contents("summary/meta.html",
 		`much summary -> content:`)
 
-	tt.contents("public/summary/summary-more.html",
+	tt.contents("summary/summary-more.html",
 		`i like my content -> content:<p>i like my content</p><p>but you have to click to read more`)
 }
 
@@ -78,14 +78,14 @@ func TestContentFuturePublishing(t *testing.T) {
 	)
 	defer tt.cleanup()
 
-	tt.notExists(fmt.Sprintf("public/%s.html", future))
-	tt.notExists("public/unpublished.html")
+	tt.notExists(fmt.Sprintf("%s.html", future))
+	tt.notExists("unpublished.html")
 }
 
 func TestContentForcedPublish(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig()
+	cfg := testConfig(false)
 	cfg.PublishFuture = true
 
 	future := time.Now().Add(time.Hour * 24).Format(sDateFormat)
@@ -95,5 +95,5 @@ func TestContentForcedPublish(t *testing.T) {
 	)
 	defer tt.cleanup()
 
-	tt.exists(fmt.Sprintf("public/%s.html", future))
+	tt.exists(fmt.Sprintf("%s.html", future))
 }

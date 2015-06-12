@@ -75,8 +75,8 @@ func getContentImgGener(s *site, c *content, ext string) (contentGener, contentT
 	return gi, contImg
 }
 
-func (gi *contentGenImg) claimDest(c *content) (dstPath string, alreadyClaimed bool, err error) {
-	panic("not yet implemented")
+func (gi *contentGenImg) finalExt(c *content) string {
+	return ".html"
 }
 
 func (gi *contentGenImg) render(s *site, c *content) (content []byte, err error) {
@@ -95,7 +95,7 @@ func (gi *contentGenImg) generate(content []byte, dstPath string, s *site, c *co
 
 func (gi *contentGenImg) scale(img img) (w, h int, dstPath string, err error) {
 	ext := gi.getNewExt(img)
-	dstPath, alreadyClaimed, err := gi.c.claimDest(ext)
+	dstPath, alreadyClaimed, err := gi.c.claimOtherExt(ext)
 	if err != nil {
 		return
 	}
@@ -241,12 +241,18 @@ func (*contentGenImg) resizeImage(ig image.Image, img img) image.Image {
 
 	scaleW, scaleH := srcW, srcH
 
-	if img.h == 0 || (scaleW > img.w && img.w != 0) || (scaleW < img.w && scaleH < img.h) {
+	doScale := img.h == 0 ||
+		(scaleW > img.w && img.w != 0) ||
+		(scaleW < img.w && scaleH < img.h)
+	if doScale {
 		scaleH = (scaleH * img.w) / scaleW
 		scaleW = img.w
 	}
 
-	if img.w == 0 || (scaleH > img.h && img.h != 0) || (scaleW < img.w && scaleH < img.h) {
+	doScale = img.w == 0 ||
+		(scaleH > img.h && img.h != 0) ||
+		(scaleW < img.w && scaleH < img.h)
+	if doScale {
 		scaleW = (scaleW * img.h) / scaleH
 		scaleH = img.h
 	}

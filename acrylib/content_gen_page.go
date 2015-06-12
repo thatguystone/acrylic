@@ -27,9 +27,8 @@ func getContentPageGener(s *site, c *content, ext string) (contentGener, content
 	return gp, contPage
 }
 
-func (gp *contentGenPage) claimDest(c *content) (dstPath string, alreadyClaimed bool, err error) {
-	dstPath, alreadyClaimed, err = c.claimDest(".html")
-	return
+func (gp *contentGenPage) finalExt(c *content) string {
+	return ".html"
 }
 
 func (gp *contentGenPage) render(s *site, c *content) (content []byte, err error) {
@@ -48,9 +47,11 @@ func (gp *contentGenPage) render(s *site, c *content) (content []byte, err error
 	return
 }
 
-func (gp *contentGenPage) generate(content []byte, dstPath string, s *site, c *content) (
-	wroteOwnFile bool,
-	err error) {
+func (gp *contentGenPage) generate(
+	content []byte,
+	dstPath string,
+	s *site,
+	c *content) (wroteOwnFile bool, err error) {
 
 	s.stats.addPage()
 	wroteOwnFile = true

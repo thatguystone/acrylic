@@ -52,7 +52,7 @@ func TestTplSorting(t *testing.T) {
 func TestTplMenuBasic(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig()
+	cfg := testConfig(false)
 	cfg.MinifyHTML = false
 
 	tt := testNew(t, true, cfg,

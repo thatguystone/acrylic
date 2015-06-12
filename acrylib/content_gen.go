@@ -5,8 +5,8 @@ import "fmt"
 type contentGenGetter func(s *site, c *content, ext string) (contentGener, contentType)
 
 type contentGener interface {
-	// Claim the file you're going to output
-	claimDest(c *content) (dstPath string, alreadyClaimed bool, err error)
+	// Extension that this content should have when generated
+	finalExt(c *content) (ext string)
 
 	// Render the content itself, not the full page
 	render(s *site, c *content) (content []byte, err error)
@@ -68,7 +68,7 @@ func (gw *contentGenWrapper) getGener() interface{} {
 }
 
 func (gw *contentGenWrapper) generatePage() (dstPath string) {
-	dstPath, alreadyClaimed, err := gw.gener.claimDest(gw.c)
+	dstPath, alreadyClaimed, err := gw.c.claimDest()
 	if err != nil {
 		close(gw.contentGened)
 		gw.s.errs.add(gw.c.f.srcPath, err)

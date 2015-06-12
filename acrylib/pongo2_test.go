@@ -3,14 +3,14 @@ package acrylib
 import "testing"
 
 func testP2Exec(t *testing.T, in string, out string, files ...testFile) {
-	tt := testNew(t, true, nil, append(files,
+	tt := testNew(t, true, testConfig(true), append(files,
 		testFile{
 			p:  "content/tpl/render.html",
 			sc: in,
 		})...)
 	defer tt.cleanup()
 
-	tt.contents("public/tpl/render.html",
+	tt.contents("tpl/render.html",
 		out)
 }
 
@@ -39,7 +39,7 @@ func TestP2ImgOptions(t *testing.T) {
 func TestP2ContentRel(t *testing.T) {
 	t.Parallel()
 
-	tt := testNew(t, true, nil,
+	tt := testNew(t, true, testConfig(true),
 		testFile{
 			p: "content/test.md",
 		},
@@ -54,6 +54,6 @@ func TestP2ContentRel(t *testing.T) {
 	)
 	defer tt.cleanup()
 
-	tt.contents("public/sub/index.html",
+	tt.contents("sub/index.html",
 		"relUrl=../test.html")
 }

@@ -130,9 +130,10 @@ var (
 	}
 )
 
-func testConfig() *Config {
+func testConfig(uglyURLs bool) *Config {
 	cfg := &Config{
 		Root:       filepath.Join("test_data", assert.GetTestName()),
+		UglyURLs:   uglyURLs,
 		MinifyHTML: true,
 	}
 
@@ -143,7 +144,7 @@ func testConfig() *Config {
 
 func testNew(t testing.TB, build bool, cfg *Config, files ...testFile) *testAcrylic {
 	if cfg == nil {
-		cfg = testConfig()
+		cfg = testConfig(false)
 	}
 
 	tt := &testAcrylic{
@@ -151,6 +152,7 @@ func testNew(t testing.TB, build bool, cfg *Config, files ...testFile) *testAcry
 		cfg: *cfg,
 	}
 
+	os.RemoveAll(tt.cfg.Root)
 	tt.createFiles(files)
 
 	_, tt.isBench = t.(*testing.B)
@@ -198,16 +200,30 @@ func (tt *testAcrylic) createFiles(files []testFile) {
 	}
 }
 
+func (tt *testAcrylic) finalPath(path string) string {
+	root := filepath.Join(tt.cfg.Root, tt.cfg.PublicDir)
+
+	base := filepath.Base(path)
+	if !tt.cfg.UglyURLs && strings.HasSuffix(path, ".html") && base != "index.html" {
+		file := fChangeExt(base, "")
+		path = filepath.Join(root, filepath.Dir(path), file, "index.html")
+	} else {
+		path = filepath.Join(root, path)
+	}
+
+	return path
+}
+
 func (tt *testAcrylic) exists(path string) {
-	p := filepath.Join(tt.cfg.Root, path)
-	_, err := os.Stat(p)
-	tt.a.True(err == nil, "file %s does not exist", p)
+	path = tt.finalPath(path)
+	_, err := os.Stat(path)
+	tt.a.True(err == nil, "file %s does not exist", path)
 }
 
 func (tt *testAcrylic) notExists(path string) {
-	p := filepath.Join(tt.cfg.Root, path)
-	_, err := os.Stat(p)
-	tt.a.False(err == nil, "file %s exists, but it shouldn't", p)
+	path = tt.finalPath(path)
+	_, err := os.Stat(path)
+	tt.a.False(err == nil, "file %s exists, but it shouldn't", path)
 }
 
 func (tt *testAcrylic) contents(path, contents string) {
@@ -216,7 +232,8 @@ func (tt *testAcrylic) contents(path, contents string) {
 }
 
 func (tt *testAcrylic) readFile(path string) string {
-	f, err := os.Open(filepath.Join(tt.cfg.Root, path))
+	path = tt.finalPath(path)
+	f, err := os.Open(path)
 	tt.a.MustNotError(err, "failed to open %s", path)
 	defer f.Close()
 
@@ -268,28 +285,33 @@ func TestBasicSite(t *testing.T) {
 	tt := testNew(t, true, nil, basicSite...)
 	defer tt.cleanup()
 
-	tt.exists("public/blog/post1.js")
-	tt.exists("public/blog/post2.js")
-	tt.exists("public/blog/post1.css")
-	tt.exists("public/blog/post2.css")
+	tt.exists("blog/post1.js")
+	tt.exists("blog/post2.js")
+	tt.exists("blog/post1.css")
+	tt.exists("blog/post2.css")
+	tt.notExists("blog/empty/index.html")
 
-	tt.contents("public/index.html", defaultLayouts["_index"])
-	tt.contents("public/blog/empty/index.html", defaultLayouts["_list"])
+	tt.contents("index.html", defaultLayouts["_index"])
 
-	tt.contents("public/blog/post1.html",
-		`<script src=../layout/blog/layout.js></script><link rel=stylesheet href=../layout/blog/layout.css>Blog layout:<h1>post 1</h1><p>post 1<script src=post1.js></script><link rel=stylesheet href=post1.css></p><img src=../layout/blog/img.png style=width:1px;height:1px;><script src=../layout/blog/layout2.js></script><link rel=stylesheet href=../layout/blog/layout2.css>`)
-	tt.contents("public/blog/post2.html",
-		`<script src=../layout/blog/layout.js></script><link rel=stylesheet href=../layout/blog/layout.css>Blog layout:<h1>post 2</h1><p>post 2<script src=post2.js></script><link rel=stylesheet href=post2.css></p><img src=../layout/blog/img.png style=width:1px;height:1px;><script src=../layout/blog/layout2.js></script><link rel=stylesheet href=../layout/blog/layout2.css>`)
+	tt.contents("blog/post1.html",
+		`<script src=../../layout/blog/layout.js></script><link rel=stylesheet href=../../layout/blog/layout.css>Blog layout:<h1>post 1</h1><p>post 1<script src=../post1.js></script><link rel=stylesheet href=../post1.css></p><img src=../../layout/blog/img.png style=width:1px;height:1px;><script src=../../layout/blog/layout2.js></script><link rel=stylesheet href=../../layout/blog/layout2.css>`)
+	tt.contents("blog/post2.html",
+		`<script src=../../layout/blog/layout.js></script><link rel=stylesheet href=../../layout/blog/layout.css>Blog layout:<h1>post 2</h1><p>post 2<script src=../post2.js></script><link rel=stylesheet href=../post2.css></p><img src=../../layout/blog/img.png style=width:1px;height:1px;><script src=../../layout/blog/layout2.js></script><link rel=stylesheet href=../../layout/blog/layout2.css>`)
 
-	tt.contents("public/layout/blog/layout2.js",
+	tt.contents("layout/blog/layout2.js",
 		`(layout 2 js!)`)
-	tt.contents("public/layout/blog/layout2.css",
+	tt.contents("layout/blog/layout2.css",
 		`(layout 2 css!)`)
 }
 
 func TestIndexPagesInDirs(t *testing.T) {
 	t.Parallel()
 	// TODO(astone): test case for right layout chosen for an index.md/meta in a dir
+}
+
+func TestIndexContentConflict(t *testing.T) {
+	t.Parallel()
+	// TODO(astone): case for blog/post1.md && blog/post/index.html
 }
 
 func TestBuildStats(t *testing.T) {
@@ -329,7 +351,7 @@ func TestBuildStats(t *testing.T) {
 func TestLayoutAndThemesContentPages(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig()
+	cfg := testConfig(false)
 	cfg.Theme = "test"
 
 	pages := append([]testFile{}, basicSite...)
@@ -365,8 +387,8 @@ func TestLayoutAndThemesContentPages(t *testing.T) {
 	)...)
 	defer tt.cleanup()
 
-	tt.exists("public/layout/layout_linked.html")
-	tt.exists("public/theme/test/theme_linked.html")
+	tt.exists("layout/layout_linked.html")
+	tt.exists("theme/test/theme_linked.html")
 
 	tt.notExists("public/layout/layout_unlinked.html")
 	tt.notExists("public/theme/test/theme_unlinked.html")
@@ -390,118 +412,7 @@ func TestSiteLayoutChanging(t *testing.T) {
 	)
 	defer tt.cleanup()
 
-	tt.contents("public/post.html", content)
-}
-
-func TestSiteAssetCombining(t *testing.T) {
-	t.Parallel()
-
-	cfg := testConfig()
-	cfg.RenderJS = true
-	cfg.SingleJS = true
-	cfg.RenderCSS = true
-	cfg.SingleCSS = true
-
-	pages := append([]testFile{}, basicSite...)
-	tt := testNew(t, true, cfg, append(pages,
-		testFile{
-			p:  "lone/script.js",
-			sc: `some page`,
-		},
-	)...)
-	defer tt.cleanup()
-
-	tt.exists("public/all.js")
-	tt.notExists("public/layout/blog/layout2.js")
-
-	tt.exists("public/all.css")
-	tt.notExists("public/layout/blog/layout2.css")
-
-	// The whole directory should be trashed
-	tt.notExists("public/lone")
-	tt.notExists("public/lone/script.js")
-
-	tt.contents("public/blog/post2.html",
-		"Blog layout:<h1>post 2</h1><p>post 2</p><img src=../layout/blog/img.png style=width:1px;height:1px;><script src=../../all.js></script><link rel=stylesheet href=../../all.css>")
-
-	fc := tt.readFile("public/all.js")
-	tt.a.Log(fc)
-
-	tt.a.Equal(1, strings.Count(fc, "(layout js)"), "js should only appear once")
-	tt.a.Equal(1, strings.Count(fc, "(layout 2 js!)"), "js should only appear once")
-	tt.a.Equal(1, strings.Count(fc, "(post 1 js)"), "js should only appear once")
-	tt.a.Equal(1, strings.Count(fc, "(post 2 js)"), "js should only appear once")
-
-	lojs := strings.Index(fc, "(layout js)")
-	pjs := strings.Index(fc, "(post 1 js)")
-	lo2js := strings.Index(fc, "(layout 2 js!)")
-	tt.a.True(lojs < pjs, "layout js should be before post js: %d < %d", lojs, pjs)
-	tt.a.True(pjs < lo2js, "post js should be before layout js2: %d < %d", pjs, lo2js)
-}
-
-func TestSiteAssetsOutOfOrder(t *testing.T) {
-	t.Parallel()
-
-	cfg := testConfig()
-	cfg.RenderJS = true
-	cfg.SingleJS = true
-	cfg.RenderCSS = true
-	cfg.SingleCSS = true
-
-	tt := testNew(t, false, cfg,
-		testFile{
-			p: "content/blog/post1.md",
-			sc: "# post 1\n" +
-				"{% js \"post1.js\" %}\n" +
-				"{% js \"post2.js\" %}\n",
-		},
-		testFile{
-			p: "content/blog/post2.md",
-			sc: "# post 2\n" +
-				"{% js \"post2.js\" %}\n" +
-				"{% js \"post1.js\" %}\n",
-		},
-		testFile{
-			p:  "content/blog/post1.js",
-			sc: "(post 1 js)",
-		},
-		testFile{
-			p:  "content/blog/post2.js",
-			sc: "(post 2 js)",
-		})
-	defer tt.cleanup()
-
-	_, errs := Build(tt.cfg)
-	tt.a.NotEqual(0, len(errs))
-
-	es := errs.String()
-	tt.a.True(strings.Contains(es, "asset ordering inconsistent"),
-		"wrong error string: %s", es)
-}
-
-func TestSiteAssetsTrailer(t *testing.T) {
-	t.Parallel()
-
-	tt := testNew(t, true, nil,
-		testFile{
-			p: "content/all_assets.md",
-			sc: "{% js \"coffee.coffee\" %}\n" +
-				"{% css \"less.less\" %}\n",
-		},
-		testFile{p: "content/coffee.coffee"},
-		testFile{p: "content/less.less"},
-	)
-	defer tt.cleanup()
-
-	fc := tt.readFile("/public/all_assets.html")
-	t.Log(fc)
-	tt.a.True(strings.Contains(fc, tt.lastSite.cfg.LessURL))
-	tt.a.True(strings.Contains(fc, tt.lastSite.cfg.CoffeeURL))
-}
-
-func TestSiteAssetMinify(t *testing.T) {
-	t.Parallel()
-	// TODO(astone): asset minification
+	tt.contents("post.html", content)
 }
 
 func BenchmarkEmptySite(b *testing.B) {
