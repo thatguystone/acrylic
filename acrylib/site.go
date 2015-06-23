@@ -38,25 +38,14 @@ var (
 		layoutPubDir,
 		themePubDir,
 	}
-	reservedInternalPaths = []string{
-		imgPubDir,
-	}
-
-	allReservedPaths = []string{}
 )
 
-func init() {
-	allReservedPaths = append(allReservedPaths, reservedPaths...)
-	allReservedPaths = append(allReservedPaths, reservedInternalPaths...)
-}
-
-// TODO(astone): menus
 // TODO(astone): sitemap.xml
 // TODO(astone): rss feeds
 // TODO(astone): code highlighting
 // TODO(astone): live reload
 // TODO(astone): pagination (http://gohugo.io/extras/pagination/)
-// TODO(astone): permalinks (http://gohugo.io/extras/permalinks/)
+// TODO(astone): permalinks (http://gohugo.io/extras/permalinks/) (be sure to test with UglyURLs)
 // TODO(astone): table of contents (http://gohugo.io/extras/toc/)
 // TODO(astone): get parent content for bread crumbs
 
@@ -126,13 +115,6 @@ func (s *site) addContent(f file, isContent bool) {
 					res))
 			return
 		}
-	}
-
-	if res := fPathCheckFor(f.dstPath, reservedInternalPaths...); res != "" {
-		s.errs.add(f.srcPath,
-			fmt.Errorf("use of reserved path `%s` is not allowed",
-				res))
-		return
 	}
 
 	s.contentCh <- f
@@ -307,7 +289,7 @@ func (s *site) generate() {
 
 		for c := range ch {
 			// Don't generate layout and theme pages unless explicitly requested
-			if res := fPathCheckFor(c.f.dstPath, allReservedPaths...); res != "" {
+			if res := fPathCheckFor(c.f.dstPath, reservedPaths...); res != "" {
 				continue
 			}
 

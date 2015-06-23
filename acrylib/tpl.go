@@ -25,29 +25,22 @@ type TplSite struct {
 	Blobs tplContentSlice // Sorted list of all blobs
 }
 
+type TplMenus map[string][]*TplMenuContent
+
 // TplContent contains the values exposed to templates as `Page`.
 type TplContent struct {
 	s     *site
 	c     *content
-	Title string
-	Date  tplTime
-	Meta  *meta
-	Menus tplMenuContentSlice // Which menus this content is in
-}
-
-// TplMenus contains menu mappings.
-type TplMenus map[string]*TplMenu
-
-// TplMenu contains information about a specific menu.
-type TplMenu struct {
-	Links    tplMenuContentSlice
-	Children TplMenus
+	Title string  // Title of the page
+	Date  tplTime // Date included with content
+	Meta  *meta   // Any fields put into any content metadata
 }
 
 // TplMenuContent contains menu information for a piece of content.
 type TplMenuContent struct {
 	menuName string
 	Page     *TplContent
+	Childs   []*TplMenuContent
 	TplMenuOpts
 }
 
@@ -77,7 +70,7 @@ func newTplSite(s *site) *TplSite {
 	tplSite := TplSite{
 		s:     s,
 		Title: s.cfg.Title,
-		Menus: map[string]*TplMenu{},
+		Menus: map[string][]*TplMenuContent{},
 	}
 
 	return &tplSite
@@ -128,7 +121,7 @@ func (tplSite *TplSite) contentLoaded() {
 	}
 
 	for _, m := range tplSite.Menus {
-		m.sort()
+		tplMenuContentSlice(m).sort()
 	}
 
 	// fmt.Println("pages:", tplSite.Pages)
@@ -139,8 +132,9 @@ func (tplSite *TplSite) contentLoaded() {
 func (tplCont *TplContent) init(s *site, c *content) {
 	tplCont.s = s
 	tplCont.c = c
-	tplCont.Meta = c.meta
 	tplCont.Date = tplTime{format: s.cfg.DateFormat}
+
+	tplCont.Meta = c.meta
 
 	if !c.f.isImplicit {
 		base := filepath.Base(c.cpath)
@@ -208,17 +202,11 @@ func (tplCont *TplContent) Active(tplP2Ctx *p2.ExecutionContext) bool {
 	return tplCont.c == tplP2Ctx.Public[contentKey]
 }
 
-// IsMenu determines if this content is in the menu with the given name, or
-// any of that menu's children menus.
-func (tplCont *TplContent) InSubMenu(name string) bool {
-	sub := name + "."
-
-	for _, m := range tplCont.Menus {
-		if strings.HasPrefix(m.menuName, sub) {
-			return true
-		}
-	}
-	return false
+// IsChildActive determines if this content or any of its sub-content is the
+// page currently being generated.
+func (tplCont *TplContent) IsChildActive(tplP2Ctx *p2.ExecutionContext) bool {
+	c := tplP2Ctx.Public[contentKey].(*content)
+	return strings.HasPrefix(c.cpath, tplCont.c.cpath)
 }
 
 func (tplCont *TplContent) Less(o *TplContent) bool {
@@ -241,21 +229,8 @@ func (tmc *TplMenuContent) Active(tplP2Ctx *p2.ExecutionContext) bool {
 	return tmc.Page.Active(tplP2Ctx)
 }
 
-func (tmc *TplMenuContent) SubActive(tplP2Ctx *p2.ExecutionContext) bool {
-	if tmc.Active(tplP2Ctx) {
-		return true
-	}
-
-	actPage := tplP2Ctx.Public["Page"].(*TplContent)
-
-	sub := tmc.menuName + "."
-	for _, actMenu := range actPage.Menus {
-		if strings.HasPrefix(actMenu.menuName, sub) {
-			return true
-		}
-	}
-
-	return false
+func (tmc *TplMenuContent) IsChildActive(tplP2Ctx *p2.ExecutionContext) bool {
+	return tmc.Page.IsChildActive(tplP2Ctx)
 }
 
 func (s tplContentSlice) Len() int      { return len(s) }
@@ -289,58 +264,75 @@ func (s tplContentSlice) String() string {
 	return b.String()
 }
 
-func (ms TplMenus) Get(path string) *TplMenu {
-	return ms.get(path, false)
-}
-
-func (ms TplMenus) get(path string, orCreate bool) *TplMenu {
-	part := path
-
-	dot := strings.Index(path, ".")
-	if dot == -1 {
-		path = ""
-	} else {
-		part = path[:dot]
-		path = path[dot+1:]
-	}
-
-	m, ok := ms[part]
-	if !ok {
-		if !orCreate {
-			return nil
-		}
-
-		m = &TplMenu{
-			Children: TplMenus{},
-		}
-		ms[part] = m
-	}
-
-	if len(path) > 0 {
-		return m.Children.get(path, orCreate)
-	}
-
-	return m
-}
-
 func (ms TplMenus) add(tplCont *TplContent, mtx *sync.Mutex) error {
 	mm := tplCont.Meta.menu()
 	if mm == nil {
 		return nil
 	}
 
+	var insertInto func(mCont *TplMenuContent, slice []*TplMenuContent) []*TplMenuContent
+	insertInto = func(mCont *TplMenuContent, slice []*TplMenuContent) []*TplMenuContent {
+		at := sort.Search(len(slice), func(i int) bool {
+			return slice[i].Page.c.cpath >= mCont.Page.c.cpath
+		})
+
+		myCPath := mCont.Page.c.cpath
+		checkInsert := func(i int) bool {
+			if i < 0 || i >= len(slice) {
+				return false
+			}
+
+			occupied := slice[i]
+			occupiedCPath := occupied.Page.c.cpath
+
+			switch {
+			case strings.HasPrefix(occupiedCPath, myCPath):
+				mCont.Childs = insertInto(occupied, mCont.Childs)
+				slice[i] = mCont
+
+				// If any paths were added before a parent, push them down
+				i++
+				for i < len(slice) {
+					child := slice[i]
+					if !strings.HasPrefix(child.Page.c.cpath, myCPath) {
+						break
+					}
+
+					slice = append(slice[:i], slice[i+1:]...)
+					mCont.Childs = insertInto(child, mCont.Childs)
+				}
+
+			case strings.HasPrefix(myCPath, occupiedCPath):
+				occupied.Childs = insertInto(mCont, occupied.Childs)
+
+			default:
+				return false
+			}
+
+			return true
+		}
+
+		insert := !checkInsert(at) && !checkInsert(at-1)
+		if insert {
+			slice = append(slice, nil)
+			copy(slice[at+1:], slice[at:])
+			slice[at] = mCont
+		}
+
+		return slice
+	}
+
 	addOpts := func(k string, opts TplMenuOpts) {
-		mtx.Lock()
-
-		m := ms.get(k, true)
-
 		mCont := &TplMenuContent{
 			menuName:    k,
 			Page:        tplCont,
 			TplMenuOpts: opts,
 		}
-		m.Links = append(m.Links, mCont)
-		tplCont.Menus = append(tplCont.Menus, mCont)
+
+		mtx.Lock()
+
+		menus := ms[k]
+		ms[k] = insertInto(mCont, menus)
 
 		mtx.Unlock()
 	}
@@ -430,11 +422,11 @@ func (ms TplMenus) add(tplCont *TplContent, mtx *sync.Mutex) error {
 	return nil
 }
 
-func (m *TplMenu) sort() {
-	sort.Sort(m.Links)
+func (s tplMenuContentSlice) sort() {
+	sort.Sort(s)
 
-	for _, sm := range m.Children {
-		sm.sort()
+	for _, sm := range s {
+		tplMenuContentSlice(sm.Childs).sort()
 	}
 }
 

@@ -41,6 +41,8 @@ const (
 	cropLen
 )
 
+const imgUniquifier = "img"
+
 var (
 	imgExts      = map[string]bool{}
 	imgExtsSlice = []string{
@@ -89,7 +91,7 @@ func (gi *contentGenImg) generate(content []byte, dstPath string, s *site, c *co
 
 	panic("not yet implemented")
 
-	// TODO(astone): generate image pages
+	// TODO(astone): generate image pages (in dir `imgUniquifier`)
 	// TODO(astone): be sure to include asset trailers
 }
 

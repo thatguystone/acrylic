@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestTplSorting(t *testing.T) {
+func TestTplPagesSorting(t *testing.T) {
 	t.Parallel()
 
 	testFiles := []testFile{
@@ -52,26 +52,18 @@ func TestTplSorting(t *testing.T) {
 func TestTplMenuBasic(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig(false)
-	cfg.MinifyHTML = false
-
+	cfg := testConfig(true)
 	tt := testNew(t, true, cfg,
 		testFile{
 			p: "layouts/_single.html",
-			sc: `main: {% for m in Site.Menus.Get("main").Links %}` +
-				`{% if m.SubActive %}Active:{% endif %}` +
+			sc: `{% macro dumpMenu(menu) %}` +
+				`| {% for m in menu %}` +
+				`{% if m.IsChildActive %}Active:{% endif %}` +
 				`{{ m.Title }} | ` +
-				`{% endfor %}` + "\n" +
-
-				`main.sub: {% for m in Site.Menus.Get("main.sub").Links %}` +
-				`{% if m.SubActive %}Active:{% endif %}` +
-				`{{ m.Title }} | ` +
-				`{% endfor %}` + "\n" +
-
-				`main.sub.sub: {% for m in Site.Menus.Get("main.sub.sub").Links %}` +
-				`{% if m.SubActive %}Active:{% endif %}` +
-				`{{ m.Title }} | ` +
-				`{% endfor %}`,
+				`{% if m.Childs|length %}({{ dumpMenu(m.Childs) }}) {% endif %}` +
+				`{% endfor %}` +
+				`{% endmacro %}` +
+				`{{ dumpMenu(Site.Menus.main) }}` + "\n",
 		},
 
 		testFile{
@@ -87,20 +79,31 @@ func TestTplMenuBasic(t *testing.T) {
 			sc: "---\nmenu: main\n---",
 		},
 		testFile{
-			p:  "content/string3.html",
-			sc: "---\nmenu: main.sub\n---",
+			p:  "content/string2/page0.html",
+			sc: "---\nmenu: main\n---",
 		},
 		testFile{
-			p:  "content/string4.html",
-			sc: "---\nmenu: main.sub\n---",
+			p:  "content/string2/page1.html",
+			sc: "---\nmenu: main\n---",
 		},
 		testFile{
-			p:  "content/string5.html",
-			sc: "---\nmenu: main.sub.\n---",
+			p:  "content/string2/page2.html",
+			sc: "---\nmenu: main\n---",
 		},
 		testFile{
-			p:  "content/string6.html",
-			sc: "---\nmenu: main.sub.sub\n---",
+			p:  "content/string2/page3.html",
+			sc: "---\nmenu: main\n---",
+		},
+		testFile{
+			p:  "content/string2/page3/sub0.html",
+			sc: "---\nmenu: main\n---",
+		},
+		testFile{
+			p: "content/string2/page3/sub1.html",
+		},
+		testFile{
+			p:  "content/string2/page4.html",
+			sc: "---\nmenu: main\n---",
 		},
 
 		testFile{
@@ -133,10 +136,9 @@ func TestTplMenuBasic(t *testing.T) {
 	)
 	defer tt.cleanup()
 
-	// FORCE MENU HEIRARCY BASED ON CONTENT HEIRARCHY: DONT ALLOW NAMED MENUS, JUST NAME THEM AFTER THEIR DIR
+	tt.contents("string0.html",
+		`| Complex 1 | Complex 0 | Slice0 | Slice1 | Active:String0 | String1 | String2 | (| Page0 | Page1 | Page2 | Page3 | (| Sub0 | ) Page4 | )`)
 
-	// tt.contents("public/string0.html",
-	// 	`| Complex 1 | Complex 0 | Slice0 | Slice1 | Active:String0 | String1 | String2 | String6 |`)
-	// tt.contents("public/string5.html",
-	// 	``)
+	tt.contents("string2/page3/sub0.html",
+		`| Complex 1 | Complex 0 | Slice0 | Slice1 | String0 | String1 | Active:String2 | (| Page0 | Page1 | Page2 | Active:Page3 | (| Active:Sub0 | ) Page4 | )`)
 }

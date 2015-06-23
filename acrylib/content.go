@@ -43,7 +43,6 @@ type contentDetails struct {
 }
 
 const (
-	imgPubDir    = "img"
 	layoutPubDir = "layout"
 	themePubDir  = "theme"
 )
