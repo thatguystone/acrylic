@@ -425,6 +425,20 @@ func TestSiteLayoutChanging(t *testing.T) {
 	tt.contents("post.html", content)
 }
 
+func TestRSS(t *testing.T) {
+	t.Parallel()
+	tt := testNew(t, true, nil,
+		testFile{
+			p:  "content/blog/index.meta",
+			sc: "rss: true",
+		},
+		testFile{p: "content/blog/post0.md"},
+		testFile{p: "content/blog/post1.md"},
+		testFile{p: "content/blog/post2.md"},
+	)
+	defer tt.cleanup()
+}
+
 func BenchmarkEmptySite(b *testing.B) {
 	tt := testNew(b, false, nil)
 	defer tt.cleanup()

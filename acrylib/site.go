@@ -46,7 +46,6 @@ var (
 // TODO(astone): pagination (http://gohugo.io/extras/pagination/)
 // TODO(astone): permalinks (http://gohugo.io/extras/permalinks/) (be sure to test with UglyURLs)
 // TODO(astone): table of contents (http://gohugo.io/extras/toc/)
-// TODO(astone): get parent content for bread crumbs
 
 func newSite(cfg *Config) *site {
 	s := &site{

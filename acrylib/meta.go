@@ -52,6 +52,15 @@ func (m meta) getString(k string) string {
 	return s
 }
 
+func (m meta) getBool(k string) bool {
+	s, ok := m[k].(bool)
+	if !ok {
+		return false
+	}
+
+	return s
+}
+
 func (m meta) getDate(k string) (time.Time, bool) {
 	s := m.getString(k)
 	return sToDate(s)
@@ -67,6 +76,10 @@ func (m meta) date() (time.Time, bool) {
 
 func (m meta) summary() string {
 	return m.getString("summary")
+}
+
+func (m meta) rss() bool {
+	return m.getBool("rss")
 }
 
 func (m meta) layoutName() string {

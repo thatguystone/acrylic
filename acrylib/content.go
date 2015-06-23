@@ -134,7 +134,18 @@ func (cs *contents) add(f file) error {
 
 	cs.mtx.Unlock()
 
-	return cs.s.tplSite.addContent(&c.tplCont)
+	err = cs.s.tplSite.addContent(&c.tplCont)
+
+	if err == nil && c.f.layoutName == "_list" && c.meta.rss() {
+		cs.add(file{
+			srcPath:    filepath.Join(filepath.Dir(c.f.srcPath), "feed.rss"),
+			dstPath:    filepath.Join(c.cpath, "feed.rss"),
+			layoutName: "_rss",
+			isImplicit: true,
+		})
+	}
+
+	return err
 }
 
 func (cs *contents) setupImplicitPages() {

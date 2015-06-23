@@ -35,6 +35,7 @@ type TplContent struct {
 	Title  string          // Title of the page
 	Date   tplTime         // Date included with content
 	Meta   *meta           // Any fields put into any content metadata
+	Parent *TplContent     // Parent content
 	Childs tplContentSlice // Sub-content
 	Weight int             // Weight for ordering
 }
@@ -250,6 +251,7 @@ func (s tplContentSlice) add(tplCont *TplContent) tplContentSlice {
 
 		switch {
 		case occupied.c.isChildOf(tplCont.c):
+			occupied.Parent = tplCont
 			tplCont.Childs = tplCont.Childs.add(occupied)
 			s[i] = tplCont
 
@@ -262,10 +264,12 @@ func (s tplContentSlice) add(tplCont *TplContent) tplContentSlice {
 				}
 
 				s = append(s[:i], s[i+1:]...)
+				child.Parent = tplCont
 				tplCont.Childs = tplCont.Childs.add(child)
 			}
 
 		case tplCont.c.isChildOf(occupied.c):
+			tplCont.Parent = occupied
 			occupied.Childs = occupied.Childs.add(tplCont)
 
 		default:
