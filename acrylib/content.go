@@ -375,6 +375,10 @@ func (c *content) getSummary() string {
 	return c.deets.summary
 }
 
+func (c *content) isChildOf(o *content) bool {
+	return strings.HasPrefix(c.cpath, o.cpath+"/")
+}
+
 func (c *content) relDest(otherPath string) string {
 	od := filepath.Dir(c.f.dstPath)
 	d, f := filepath.Split(otherPath)

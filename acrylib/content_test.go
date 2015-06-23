@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/thatguystone/assert"
 )
 
 func TestContentAutoMetas(t *testing.T) {
@@ -96,4 +98,56 @@ func TestContentForcedPublish(t *testing.T) {
 	defer tt.cleanup()
 
 	tt.exists(fmt.Sprintf("%s.html", future))
+}
+
+func TestContentIsChildOf(t *testing.T) {
+	t.Parallel()
+	a := assert.From(t)
+
+	type test struct {
+		child  string
+		parent string
+		is     bool
+	}
+
+	ca := &content{}
+	cb := &content{}
+
+	tests := []test{
+		test{
+			child:  "test/content/2",
+			parent: "test/content",
+			is:     true,
+		},
+		test{
+			child:  "test/content",
+			parent: "test/content/2",
+			is:     false,
+		},
+		test{
+			child:  "test/2015-06-05-test",
+			parent: "test/2",
+			is:     false,
+		},
+		test{
+			child:  "test/2/015-06-05-test",
+			parent: "test/2",
+			is:     true,
+		},
+	}
+
+	for _, t := range tests {
+		ca.cpath = t.child
+		cb.cpath = t.parent
+
+		if t.is {
+			a.True(ca.isChildOf(cb), "expected %s to be a child of %s",
+				t.child,
+				t.parent)
+		} else {
+			a.False(ca.isChildOf(cb), "did not expect %s to be a child of %s",
+				t.child,
+				t.parent)
+		}
+	}
 }

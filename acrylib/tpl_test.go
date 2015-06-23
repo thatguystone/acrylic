@@ -1,13 +1,14 @@
 package acrylib
 
 import (
-	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/thatguystone/assert"
 )
 
 func TestTplPagesSorting(t *testing.T) {
 	t.Parallel()
+	a := assert.From(t)
 
 	testFiles := []testFile{
 		testFile{p: "content/a/2015-06-07.html"},
@@ -27,26 +28,8 @@ func TestTplPagesSorting(t *testing.T) {
 	tt := testNew(t, true, nil, testFiles...)
 	defer tt.cleanup()
 
-	sorted := true
-	for i, p := range tt.lastSite.tplSite.Pages {
-		if filepath.Join(tt.cfg.Root, testFiles[i].p) != p.c.f.srcPath {
-			sorted = false
-			break
-		}
-	}
-
-	if !sorted {
-		fs := []string{}
-		for _, tf := range testFiles {
-			fs = append(fs, fChangeExt(fDropFirst(tf.p), ""))
-		}
-
-		t.Fatalf("files are not sorted right:\n"+
-			"Expected: %s\n"+
-			"     Got: %s",
-			"["+strings.Join(fs, " ")+"]",
-			tt.lastSite.tplSite.Pages)
-	}
+	a.Equal(tt.lastSite.tplSite.Pages.String(),
+		"[index a/2015-06-07 a/2015-06-06 a/2015-06-05 a/1 a/2 a/3 a/sub/2015-06-07 a/sub/2015-06-06 a/sub/2015-06-05 a/sub/1 a/sub/2 a/sub/3]")
 }
 
 func TestTplMenuBasic(t *testing.T) {

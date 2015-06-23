@@ -40,7 +40,6 @@ var (
 	}
 )
 
-// TODO(astone): sitemap.xml
 // TODO(astone): rss feeds
 // TODO(astone): code highlighting
 // TODO(astone): live reload
