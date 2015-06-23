@@ -28,8 +28,8 @@ func TestTplPagesSorting(t *testing.T) {
 	tt := testNew(t, true, nil, testFiles...)
 	defer tt.cleanup()
 
-	a.Equal(tt.lastSite.tplSite.Pages.String(),
-		"[index a/2015-06-07 a/2015-06-06 a/2015-06-05 a/1 a/2 a/3 a/sub/2015-06-07 a/sub/2015-06-06 a/sub/2015-06-05 a/sub/1 a/sub/2 a/sub/3]")
+	a.Equal("[<index> a>[a/2015-06-07 a/2015-06-06 a/2015-06-05 a/1 a/2 a/3 a/sub>[a/sub/2015-06-07 a/sub/2015-06-06 a/sub/2015-06-05 a/sub/1 a/sub/2 a/sub/3]]]",
+		tt.lastSite.tplSite.Pages.String())
 }
 
 func TestTplMenuBasic(t *testing.T) {

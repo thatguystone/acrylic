@@ -216,6 +216,10 @@ func (tplCont *TplContent) Less(o *TplContent) bool {
 
 func (s tplContentSlice) sort() {
 	sort.Sort(s)
+
+	for _, child := range s {
+		child.Childs.sort()
+	}
 }
 
 func (s tplContentSlice) Len() int      { return len(s) }

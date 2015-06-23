@@ -88,10 +88,17 @@ func (cs *contents) add(f file) error {
 
 	c.gen = getContentGener(s, c, filepath.Ext(c.f.srcPath))
 
+	publicDst := filepath.Join(s.cfg.Root, s.cfg.PublicDir)
 	if s.cfg.UglyURLs || !c.gen.is(contPage) || c.f.isIndex() {
-		c.f.dstPath = filepath.Join(s.cfg.Root, s.cfg.PublicDir, c.f.dstPath)
+		if c.cpath == "index" {
+			c.cpath = "<index>"
+		} else if c.f.isIndex() {
+			c.cpath = filepath.Dir(c.cpath)
+		}
+
+		c.f.dstPath = filepath.Join(publicDst, c.f.dstPath)
 	} else {
-		c.f.dstPath = filepath.Join(s.cfg.Root, s.cfg.PublicDir, cpath, "index.html")
+		c.f.dstPath = filepath.Join(publicDst, c.cpath, "index.html")
 	}
 
 	c.f.dstPath = fChangeExt(c.f.dstPath, c.gen.gener.finalExt(c))
@@ -106,16 +113,22 @@ func (cs *contents) add(f file) error {
 		return nil
 	}
 
-	dstDir := filepath.Dir(c.f.dstPath)
-
 	cs.mtx.Lock()
 
-	has, ok := cs.dirHasIndex[dstDir]
-	if !ok {
-		has = new(bool)
-		cs.dirHasIndex[dstDir] = has
+	dstDir := filepath.Dir(c.f.dstPath)
+	currDir := dstDir
+
+	for strings.HasPrefix(currDir, publicDst) {
+		has, ok := cs.dirHasIndex[currDir]
+		if !ok {
+			has = new(bool)
+			cs.dirHasIndex[currDir] = has
+		}
+
+		currDir = filepath.Dir(currDir)
 	}
 
+	has := cs.dirHasIndex[dstDir]
 	*has = *has || (c.gen.is(contPage) && c.f.isIndex())
 	cs.srcs[c.f.srcPath] = c
 
@@ -126,10 +139,6 @@ func (cs *contents) add(f file) error {
 
 func (cs *contents) setupImplicitPages() {
 	root := filepath.Join(cs.s.cfg.Root, cs.s.cfg.PublicDir)
-
-	if _, ok := cs.dirHasIndex[root]; !ok {
-		cs.dirHasIndex[root] = new(bool)
-	}
 
 	for dir, hasIndex := range cs.dirHasIndex {
 		if *hasIndex {

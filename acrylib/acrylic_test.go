@@ -174,6 +174,7 @@ func (tt *testAcrylic) build() BuildStats {
 
 	if !tt.isBench {
 		tt.a.Logf("Generated files:\n%s", tt.tree(tt.cfg.PublicDir))
+		tt.a.Logf("Page structure:\n%s", site.tplSite.Pages)
 	}
 
 	tt.lastSite = site
