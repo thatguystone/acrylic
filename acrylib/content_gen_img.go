@@ -77,6 +77,10 @@ func getContentImgGener(s *site, c *content, ext string) (contentGener, contentT
 	return gi, contImg
 }
 
+func (gi *contentGenImg) defaultGen() bool {
+	return false
+}
+
 func (gi *contentGenImg) finalExt(c *content) string {
 	return ".html"
 }

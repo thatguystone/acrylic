@@ -19,7 +19,9 @@ type TplSite struct {
 	loaded bool
 	s      *site
 	mtx    sync.Mutex
-	Title  string          // Title of the site
+	Title  string // Title of the site
+	URL    string
+	Now    tplTime
 	Menus  TplMenus        // Menus available for use on the site
 	Pages  tplContentSlice // Sorted list of all pages
 	Imgs   tplContentSlice // Sorted list of all images
@@ -32,6 +34,7 @@ type TplMenus map[string]tplContentSlice
 type TplContent struct {
 	s      *site
 	c      *content
+	CPath  string          // Content path
 	Title  string          // Title of the page
 	Date   tplTime         // Date included with content
 	Meta   *meta           // Any fields put into any content metadata
@@ -58,6 +61,11 @@ func newTplSite(s *site) *TplSite {
 	tplSite := TplSite{
 		s:     s,
 		Title: s.cfg.Title,
+		URL:   s.cfg.URL,
+		Now: tplTime{
+			Time:   time.Now(),
+			format: s.cfg.DateFormat,
+		},
 		Menus: TplMenus{},
 	}
 
@@ -119,9 +127,31 @@ func (tplSite *TplSite) contentLoaded() {
 	// fmt.Println("blobs:", tplSite.Blobs)
 }
 
+// Find a page by its content page
+func (tplSite *TplSite) Find(cpath string) (tplCont *TplContent) {
+	cpath = filepath.Clean(cpath)
+
+	parts := strings.Split(cpath, "/")
+	curr := tplSite.Pages
+
+	c := ""
+	for _, part := range parts {
+		c = filepath.Join(c, part)
+		tplCont = curr.find(c)
+		if tplCont == nil {
+			return
+		}
+
+		curr = tplCont.Childs
+	}
+
+	return
+}
+
 func (tplCont *TplContent) init(s *site, c *content) {
 	tplCont.s = s
 	tplCont.c = c
+	tplCont.CPath = c.cpath
 	tplCont.Date = tplTime{format: s.cfg.DateFormat}
 
 	tplCont.Meta = c.meta
@@ -162,6 +192,11 @@ func (tplCont *TplContent) forPage() p2.Context {
 	return ctx
 }
 
+// Permalink gets a permalink to the given content
+func (tplCont *TplContent) Permalink() *p2.Value {
+	return p2.AsValue("HERERER")
+}
+
 // Summary gets a summary of the content
 func (tplCont *TplContent) Summary(tplP2Ctx *p2.ExecutionContext) *p2.Value {
 	return p2.AsValue(tplCont.c.getSummary())
@@ -200,8 +235,8 @@ func (tplCont *TplContent) IsChildActive(tplP2Ctx *p2.ExecutionContext) bool {
 }
 
 func (tplCont *TplContent) Less(o *TplContent) bool {
-	ap, af := filepath.Split(tplCont.c.cpath)
-	bp, bf := filepath.Split(o.c.cpath)
+	ap, af := filepath.Split(tplCont.CPath)
+	bp, bf := filepath.Split(o.CPath)
 
 	if ap == bp {
 		if tplCont.Date.Equal(o.Date.Time) {
@@ -237,9 +272,21 @@ func (s tplContentSlice) Less(a, b int) bool {
 	return pa.Less(pb)
 }
 
+func (s tplContentSlice) find(cpath string) *TplContent {
+	at := sort.Search(len(s), func(i int) bool {
+		return s[i].CPath >= cpath
+	})
+
+	if s[at].CPath == cpath {
+		return s[at]
+	}
+
+	return nil
+}
+
 func (s tplContentSlice) add(tplCont *TplContent) tplContentSlice {
 	at := sort.Search(len(s), func(i int) bool {
-		return s[i].c.cpath >= tplCont.c.cpath
+		return s[i].CPath >= tplCont.CPath
 	})
 
 	checkInsert := func(i int) bool {
@@ -298,7 +345,7 @@ func (s tplContentSlice) String() string {
 			b.WriteRune(' ')
 		}
 
-		path := tplCont.c.cpath
+		path := tplCont.CPath
 		date := tplCont.Date.Format(sDateFormat)
 		if !tplCont.Date.IsZero() && !strings.Contains(path, date) {
 			dir, file := filepath.Split(path)

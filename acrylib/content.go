@@ -140,7 +140,6 @@ func (cs *contents) add(f file) error {
 		cs.add(file{
 			srcPath:    filepath.Join(filepath.Dir(c.f.srcPath), "feed.rss"),
 			dstPath:    filepath.Join(c.cpath, "feed.rss"),
-			layoutName: "_rss",
 			isImplicit: true,
 		})
 	}

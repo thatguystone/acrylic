@@ -134,6 +134,7 @@ var (
 func testConfig(uglyURLs bool) *Config {
 	cfg := &Config{
 		Root:       filepath.Join("test_data", assert.GetTestName()),
+		URL:        "http://example.com/site/",
 		UglyURLs:   uglyURLs,
 		MinifyHTML: true,
 	}
@@ -432,11 +433,22 @@ func TestRSS(t *testing.T) {
 			p:  "content/blog/index.meta",
 			sc: "rss: true",
 		},
-		testFile{p: "content/blog/post0.md"},
-		testFile{p: "content/blog/post1.md"},
-		testFile{p: "content/blog/post2.md"},
+		testFile{
+			p:  "content/blog/2015-06-01-post0.md",
+			sc: "content0",
+		},
+		testFile{
+			p:  "content/blog/2015-06-02-post1.md",
+			sc: "content1",
+		},
+		testFile{
+			p:  "content/blog/2015-06-03-post2.md",
+			sc: "content2",
+		},
 	)
 	defer tt.cleanup()
+
+	tt.contents("blog/feed.rss", "")
 }
 
 func BenchmarkEmptySite(b *testing.B) {

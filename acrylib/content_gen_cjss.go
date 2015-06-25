@@ -68,6 +68,10 @@ func getContentCJSSGener(
 	return cjss, contType
 }
 
+func (cjss *contentGenCJSS) defaultGen() bool {
+	return false
+}
+
 func (cjss *contentGenCJSS) finalExt(c *content) string {
 	if cjss.doRender {
 		return cjss.ext
@@ -97,9 +101,11 @@ func (cjss *contentGenCJSS) render(s *site, c *content) (content []byte, err err
 	return
 }
 
-func (cjss *contentGenCJSS) generate(content []byte, dstPath string, s *site, c *content) (
-	wroteOwnFile bool,
-	err error) {
+func (cjss *contentGenCJSS) generate(
+	content []byte,
+	dstPath string,
+	s *site,
+	c *content) (wroteOwnFile bool, err error) {
 
 	cjss.statsAdd()
 

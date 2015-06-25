@@ -72,7 +72,6 @@ func (n urlNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Erro
 	}
 
 	currFile := n.contentRel(c)
-
 	fc, err := s.findContent(c, currFile, v.String())
 	if err != nil {
 		s.errs.add(c.f.srcPath, fmt.Errorf("url: file not found: %s", err))

@@ -37,7 +37,7 @@ func sToDate(title string) (time.Time, bool) {
 		title = title[:len(sDateFormat)]
 	}
 
-	t, err := time.Parse(sDateFormat, title)
+	t, err := time.ParseInLocation(sDateFormat, title, time.Local)
 	return t, err == nil
 }
 

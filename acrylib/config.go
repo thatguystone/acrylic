@@ -10,6 +10,9 @@ type Config struct {
 	Root  string // Where the site files live, relative to current directory
 	Theme string // Name of the theme to use
 
+	// Base URL to use for public links
+	URL string
+
 	// Title to use for the site
 	Title string
 

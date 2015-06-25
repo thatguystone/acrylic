@@ -27,6 +27,10 @@ func getContentPageGener(s *site, c *content, ext string) (contentGener, content
 	return gp, contPage
 }
 
+func (gp *contentGenPage) defaultGen() bool {
+	return true
+}
+
 func (gp *contentGenPage) finalExt(c *content) string {
 	return ".html"
 }

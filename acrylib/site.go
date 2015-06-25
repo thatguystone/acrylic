@@ -46,6 +46,7 @@ var (
 // TODO(astone): pagination (http://gohugo.io/extras/pagination/)
 // TODO(astone): permalinks (http://gohugo.io/extras/permalinks/) (be sure to test with UglyURLs)
 // TODO(astone): table of contents (http://gohugo.io/extras/toc/)
+// TODO(astone): warnings about abandoned content
 
 func newSite(cfg *Config) *site {
 	s := &site{
@@ -301,7 +302,7 @@ func (s *site) generate() {
 	}
 
 	for _, c := range s.cs.srcs {
-		if c.gen.is(contPage) {
+		if c.gen.defaultGen() {
 			ch <- c
 		}
 	}
