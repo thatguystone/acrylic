@@ -1,6 +1,7 @@
 package acrylib
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 
@@ -28,6 +29,8 @@ func init() {
 		func(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
 			return assetAllTag("css", contCSS, renderCSS{}, d, s, args)
 		})
+
+	p2.RegisterTag("highlight", highlightTag)
 
 	// These are, awkwardly enough, here since init() functions don't have an order
 	for _, t := range bannedContentTags {
@@ -60,6 +63,11 @@ type assetAllNode struct {
 	what     string
 	contType contentType
 	tagger   tagWriter
+}
+
+type highlightNode struct {
+	exp  p2.IEvaluator
+	code []byte
 }
 
 func (n urlNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2.Error {
@@ -154,6 +162,26 @@ func (n assetAllNode) Execute(ctx *p2.ExecutionContext, w p2.TemplateWriter) *p2
 	return nil
 }
 
+func (n highlightNode) Execute(
+	ctx *p2.ExecutionContext,
+	w p2.TemplateWriter) *p2.Error {
+
+	s := ctx.Public[privSiteKey].(*site)
+	c := ctx.Public[contentKey].(*content)
+
+	lang, perr := n.exp.Evaluate(ctx)
+	if perr != nil {
+		return perr
+	}
+
+	err := highlight(lang.String(), w, n.code)
+	if err != nil {
+		s.errs.add(c.f.srcPath, fmt.Errorf("failed to highlight: %v", err))
+	}
+
+	return nil
+}
+
 func p2TagParseExpressions(
 	d *p2.Parser,
 	s *p2.Token,
@@ -237,6 +265,48 @@ func assetAllTag(
 		contType:  contType,
 		tagger:    tagger,
 	}
+	return n, nil
+}
+
+func highlightTag(d *p2.Parser, s *p2.Token, args *p2.Parser) (p2.INodeTag, *p2.Error) {
+	exp, err := args.ParseExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	if args.Remaining() != 0 {
+		return nil, args.Error("highlight: only 1 argument expected", nil)
+	}
+
+	code := bytes.Buffer{}
+	for d.Remaining() > 0 {
+		if d.Peek(p2.TokenSymbol, `{%`) != nil {
+			tagIdent := d.PeekTypeN(1, p2.TokenIdentifier)
+			if tagIdent != nil {
+				if tagIdent.Val == "endhighlight" {
+					d.ConsumeN(2)
+
+					if d.Match(p2.TokenSymbol, `%}`) == nil {
+						// golint complains if this is in args.Error directly
+						msg := `highlight: expected closing %}`
+						return nil, args.Error(msg, nil)
+					}
+
+					d.Consume()
+					break
+				}
+			}
+		}
+
+		code.WriteString(d.Current().Val)
+		d.Consume()
+	}
+
+	n := highlightNode{
+		exp:  exp,
+		code: code.Bytes(),
+	}
+
 	return n, nil
 }
 

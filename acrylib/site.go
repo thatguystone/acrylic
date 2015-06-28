@@ -40,11 +40,10 @@ var (
 	}
 )
 
-// TODO(astone): code highlighting
-// TODO(astone): live reload
-// TODO(astone): pagination (http://gohugo.io/extras/pagination/)
-// TODO(astone): table of contents (http://gohugo.io/extras/toc/)
+// TODO(astone): permalinks ({% url %} in should be rel to src, return should be rel to dst)
 // TODO(astone): warnings about abandoned content
+// TODO(astone): pagination (http://gohugo.io/extras/pagination/)
+// TODO(astone): live reload
 
 func newSite(cfg *Config) *site {
 	s := &site{

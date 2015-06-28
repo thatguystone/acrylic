@@ -456,14 +456,26 @@ func TestRSS(t *testing.T) {
 
 func TestHighlight(t *testing.T) {
 	t.Parallel()
+
+	if !canHighlight() {
+		t.Skip("pygmentize not installed")
+	}
+
 	tt := testNew(t, true, nil,
 		testFile{
-			p:  "content/highlight.md",
-			sc: "``` go\ntype a struct{}\n```\n",
-			// `{% highlight "go" %}type a struct{}{% endhighlight %}`,
-		})
+			p:  "content/highlight-md.md",
+			sc: "``` go\ntype a struct{}\nfunc() test {}\n```\n",
+		},
+		testFile{
+			p:  "content/highlight-tag.md",
+			sc: "{% highlight \"go\" %}type a struct{}\nfunc() test {}{% endhighlight %}",
+		},
+	)
 
-	tt.contents("highlight.html", ``)
+	highlighted := `<div class=highlight><pre><span class=kd>type</span> <span class=nx>a</span> <span class=kd>struct</span><span class=p>{}</span> <span class=kd>func</span><span class=p>()</span> <span class=nx>test</span> <span class=p>{}</span></pre></div>`
+
+	tt.contents("highlight-md.html", highlighted)
+	tt.contents("highlight-tag.html", highlighted)
 }
 
 func BenchmarkEmptySite(b *testing.B) {

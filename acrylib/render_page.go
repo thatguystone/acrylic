@@ -2,7 +2,6 @@ package acrylib
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/russross/blackfriday"
 )
@@ -10,7 +9,11 @@ import (
 type renderPage struct{}
 type renderHTML struct{ renderPage }
 type renderMarkdown struct{ renderPage }
-type mdHtmlRenderer struct{ blackfriday.Renderer }
+
+type mdHtmlRenderer struct {
+	blackfriday.Renderer
+	err error
+}
 
 // Pages are always rendered anyway...
 func (renderPage) alwaysRender() bool { return true }
@@ -28,11 +31,13 @@ func (renderMarkdown) renders(ext string) bool {
 }
 
 func (renderMarkdown) render(b []byte) ([]byte, error) {
-	renderer := mdHtmlRenderer{
-		blackfriday.HtmlRenderer(blackfriday.HTML_USE_XHTML|
+	renderer := &mdHtmlRenderer{
+		Renderer: blackfriday.HtmlRenderer(blackfriday.HTML_USE_XHTML|
 			blackfriday.HTML_USE_SMARTYPANTS|
 			blackfriday.HTML_SMARTYPANTS_FRACTIONS|
-			blackfriday.HTML_SMARTYPANTS_LATEX_DASHES, "", ""),
+			blackfriday.HTML_SMARTYPANTS_LATEX_DASHES,
+			"",
+			""),
 	}
 
 	out := blackfriday.MarkdownOptions(b, renderer, blackfriday.Options{
@@ -44,11 +49,12 @@ func (renderMarkdown) render(b []byte) ([]byte, error) {
 			blackfriday.EXTENSION_SPACE_HEADERS |
 			blackfriday.EXTENSION_HEADER_IDS |
 			blackfriday.EXTENSION_BACKSLASH_LINE_BREAK |
-			blackfriday.EXTENSION_DEFINITION_LISTS})
+			blackfriday.EXTENSION_DEFINITION_LISTS,
+	})
 
-	return bytes.TrimSpace(out), nil
+	return bytes.TrimSpace(out), renderer.err
 }
 
-func (mdHtmlRenderer) BlockCode(out *bytes.Buffer, text []byte, lang string) {
-	fmt.Fprintf(out, "")
+func (mdr *mdHtmlRenderer) BlockCode(out *bytes.Buffer, text []byte, lang string) {
+	mdr.err = highlight(lang, out, text)
 }
