@@ -1,9 +1,6 @@
 package acrylib
 
-import (
-	"os"
-	"runtime"
-)
+import "os"
 
 // Config controls all aspects of how the site is built.
 type Config struct {
@@ -84,8 +81,6 @@ type Config struct {
 	UnorderedJS  bool
 	UnorderedCSS bool
 
-	Jobs uint // How many jobs may be run in parallel. Defaults to GOMAXPROCS*2.
-
 	// Paths to various libraries that are needed by assets
 	LessURL   string `yaml:"lessURL"`
 	CoffeeURL string `yaml:"coffeeURL"`
@@ -129,10 +124,6 @@ func (cfg *Config) setDefaults() {
 
 	if cfg.FileMode == 0 {
 		cfg.FileMode = 0640
-	}
-
-	if cfg.Jobs == 0 {
-		cfg.Jobs = uint(runtime.GOMAXPROCS(-1)) * 2
 	}
 
 	if cfg.LessURL == "" {

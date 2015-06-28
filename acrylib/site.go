@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ type site struct {
 type data map[string]interface{}
 
 var (
+	jobs          = 2
 	reservedPaths = []string{
 		layoutPubDir,
 		themePubDir,
@@ -44,6 +46,10 @@ var (
 // TODO(astone): warnings about abandoned content
 // TODO(astone): pagination (http://gohugo.io/extras/pagination/)
 // TODO(astone): live reload
+
+func init() {
+	jobs = runtime.GOMAXPROCS(-1) * 2
+}
 
 func newSite(cfg *Config) *site {
 	s := &site{
@@ -104,15 +110,6 @@ func (s *site) addContent(f file, isContent bool) {
 		panic("attempt to add content when content readers aren't running")
 	}
 
-	if isContent {
-		if res := fPathCheckFor(f.dstPath, reservedPaths...); res != "" {
-			s.errs.add(f.srcPath,
-				fmt.Errorf("use of reserved path `%s` is not allowed",
-					res))
-			return
-		}
-	}
-
 	s.contentCh <- f
 }
 
@@ -121,7 +118,7 @@ func (s *site) runContentReader() {
 		panic("attempt to run content readers when already running")
 	}
 
-	ch := make(chan file, s.cfg.Jobs*2)
+	ch := make(chan file, jobs*2)
 	reader := func() {
 		defer s.wg.Done()
 		for f := range ch {
@@ -132,7 +129,7 @@ func (s *site) runContentReader() {
 		}
 	}
 
-	for i := uint(0); i < s.cfg.Jobs; i++ {
+	for i := 0; i < jobs; i++ {
 		s.wg.Add(1)
 		go reader()
 	}
@@ -175,7 +172,7 @@ func (s *site) loadLayouts() {
 	set.Resolver = s
 
 	wg := sync.WaitGroup{}
-	tplCh := make(chan *layout, s.cfg.Jobs*2)
+	tplCh := make(chan *layout, jobs*2)
 
 	compiler := func() {
 		defer wg.Done()
@@ -202,7 +199,7 @@ func (s *site) loadLayouts() {
 		}
 	}
 
-	for i := uint(0); i < s.cfg.Jobs; i++ {
+	for i := 0; i < jobs; i++ {
 		wg.Add(1)
 		go compiler()
 	}
@@ -278,7 +275,7 @@ func (s *site) loadData() {
 func (s *site) generate() {
 	wg := sync.WaitGroup{}
 
-	ch := make(chan *content, s.cfg.Jobs*2)
+	ch := make(chan *content, jobs*2)
 
 	generator := func() {
 		defer wg.Done()
@@ -293,7 +290,7 @@ func (s *site) generate() {
 		}
 	}
 
-	for i := uint(0); i < s.cfg.Jobs; i++ {
+	for i := 0; i < jobs; i++ {
 		wg.Add(1)
 		go generator()
 	}
