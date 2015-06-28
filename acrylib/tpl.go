@@ -156,19 +156,16 @@ func (tplCont *TplContent) init(s *site, c *content) {
 
 	tplCont.Meta = c.meta
 
-	if !c.f.isImplicit {
-		base := filepath.Base(c.cpath)
-
-		if date, ok := sToDate(base); ok {
-			tplCont.Date.Time = date
-			base = base[len(sDateFormat):]
-		}
-
-		tplCont.Title = sToTitle(base)
+	base := filepath.Base(c.cpath)
+	if date, ok := sToDate(base); ok {
+		tplCont.Date.Time = date
+		base = base[len(sDateFormat):]
 	}
 
 	if title := c.meta.title(); title != "" {
 		tplCont.Title = title
+	} else {
+		tplCont.Title = sToTitle(base)
 	}
 
 	if date, ok := c.meta.date(); ok {

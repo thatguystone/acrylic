@@ -134,6 +134,7 @@ var (
 func testConfig(uglyURLs bool) *Config {
 	cfg := &Config{
 		Root:       filepath.Join("test_data", assert.GetTestName()),
+		Title:      "test site",
 		URL:        "http://example.com/site/",
 		UglyURLs:   uglyURLs,
 		MinifyHTML: true,
