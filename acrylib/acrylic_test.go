@@ -133,11 +133,12 @@ var (
 
 func testConfig(uglyURLs bool) *Config {
 	cfg := &Config{
-		Root:       filepath.Join("test_data", assert.GetTestName()),
-		Title:      "test site",
-		URL:        "http://example.com/site/",
-		UglyURLs:   uglyURLs,
-		MinifyHTML: true,
+		Root:              filepath.Join("test_data", assert.GetTestName()),
+		Title:             "test site",
+		URL:               "http://example.com/site/",
+		UglyURLs:          uglyURLs,
+		MinifyHTML:        true,
+		reproducibleBuild: true,
 	}
 
 	cfg.setDefaults()
@@ -449,7 +450,8 @@ func TestRSS(t *testing.T) {
 	)
 	defer tt.cleanup()
 
-	tt.contents("blog/feed.rss", "")
+	tt.contents("blog/feed.rss",
+		`<rss version=2.0><channel><title>test site :: Feed</title><description></description><link>http://example.com/site/</link><pubdate>Mon, 01 Jan 0001 00:00:00 +0000</pubdate><item><title>Post2</title><description>content2</description><link>http:/example.com/site/blog/2015-06-03-post2</link><pubdate>Wed, 03 Jun 2015 00:00:00 -0400</pubdate></item><item><title>Post1</title><description>content1</description><link>http:/example.com/site/blog/2015-06-02-post1</link><pubdate>Tue, 02 Jun 2015 00:00:00 -0400</pubdate></item><item><title>Post0</title><description>content0</description><link>http:/example.com/site/blog/2015-06-01-post0</link><pubdate>Mon, 01 Jun 2015 00:00:00 -0400</pubdate></item></channel></rss>`)
 }
 
 func BenchmarkEmptySite(b *testing.B) {

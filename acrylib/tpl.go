@@ -69,6 +69,10 @@ func newTplSite(s *site) *TplSite {
 		Menus: TplMenus{},
 	}
 
+	if s.cfg.reproducibleBuild {
+		tplSite.Now.Time = time.Time{}
+	}
+
 	return &tplSite
 }
 
@@ -189,9 +193,9 @@ func (tplCont *TplContent) forPage() p2.Context {
 	return ctx
 }
 
-// Permalink gets a permalink to the given content
-func (tplCont *TplContent) Permalink() *p2.Value {
-	return p2.AsValue("HERERER")
+// Get an absolute, publicly-resolvable address for the content
+func (tplCont *TplContent) AbsURL() string {
+	return filepath.Join(tplCont.s.cfg.URL, tplCont.c.publicPath)
 }
 
 // Summary gets a summary of the content

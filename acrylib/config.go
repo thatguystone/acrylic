@@ -89,6 +89,9 @@ type Config struct {
 	// Paths to various libraries that are needed by assets
 	LessURL   string `yaml:"lessURL"`
 	CoffeeURL string `yaml:"coffeeURL"`
+
+	// If the build should be made reproducible (no time changes, etc)
+	reproducibleBuild bool
 }
 
 func (cfg *Config) setDefaults() {

@@ -23,15 +23,16 @@ type contents struct {
 }
 
 type content struct {
-	cs       *contents
-	f        file
-	cpath    string
-	metaEnd  int
-	meta     *meta
-	tplCont  TplContent
-	gen      contentGenWrapper
-	assetOrd assetOrdering
-	deets    contentDetails
+	cs         *contents
+	f          file
+	cpath      string
+	publicPath string
+	metaEnd    int
+	meta       *meta
+	tplCont    TplContent
+	gen        contentGenWrapper
+	assetOrd   assetOrdering
+	deets      contentDetails
 }
 
 type contentDetails struct {
@@ -96,8 +97,10 @@ func (cs *contents) add(f file) error {
 			c.cpath = filepath.Dir(c.cpath)
 		}
 
+		c.publicPath = c.f.dstPath
 		c.f.dstPath = filepath.Join(publicDst, c.f.dstPath)
 	} else {
+		c.publicPath = c.cpath
 		c.f.dstPath = filepath.Join(publicDst, c.cpath, "index.html")
 	}
 

@@ -22,7 +22,7 @@ var (
 		<item>
 			<title>{{ c.Title }}</title>
 			<description>{{ c.Summary }}</description>
-			<link>{{ c.Permalink }}</link>
+			<link>{{ c.AbsURL }}</link>
 			<pubDate>{{ c.Date.Time|date:"Mon, 02 Jan 2006 15:04:05 -0700" }}</pubDate>
 		</item>
 	{% endfor %}
