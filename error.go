@@ -1,4 +1,4 @@
-package acrylib
+package main
 
 import (
 	"bytes"
@@ -9,17 +9,17 @@ import (
 )
 
 // Errors is a slice of all errors that occurred while processing
-type Errors []Error
+type aErrors []aError
 
 // Error contains user errors that occurred while processing the given content
-type Error struct {
-	Path string
-	Errs []error
+type aError struct {
+	path string
+	errs []error
 }
 
 type errs struct {
 	mtx sync.Mutex
-	s   []Error
+	s   aErrors
 }
 
 func (e *errs) has() bool {
@@ -31,48 +31,46 @@ func (e *errs) add(path string, err error) {
 	defer e.mtx.Unlock()
 
 	at := sort.Search(len(e.s), func(i int) bool {
-		return e.s[i].Path >= path
+		return e.s[i].path >= path
 	})
 
-	if at >= len(e.s) || e.s[at].Path != path {
-		e.s = append(e.s, Error{})
+	if at >= len(e.s) || e.s[at].path != path {
+		e.s = append(e.s, aError{})
 		copy(e.s[at+1:], e.s[at:])
-		e.s[at] = Error{
-			Path: path,
+		e.s[at] = aError{
+			path: path,
 		}
 	}
 
-	e.s[at].Errs = append(e.s[at].Errs, err)
+	e.s[at].errs = append(e.s[at].errs, err)
 }
 
-func (es Errors) String() string {
-	if len(es) == 0 {
-		return ""
-	}
-
+func (e *errs) String() string {
 	b := bytes.Buffer{}
 
-	for _, e := range es {
+	for _, e := range e.s {
 		e.dump(&b)
 	}
 
 	return b.String()
 }
 
-func (e Error) String() string {
+func (e aError) String() string {
 	b := bytes.Buffer{}
 	e.dump(&b)
 	return b.String()
 }
 
-func (e Error) dump(w io.Writer) {
-	if len(e.Errs) == 0 {
-		return
+func (e aError) dump(w io.Writer) bool {
+	if len(e.errs) == 0 {
+		return true
 	}
 
-	fmt.Fprintf(w, "from: %s\n", e.Path)
+	fmt.Fprintf(w, "from: %s\n", e.path)
 
-	for _, err := range e.Errs {
+	for _, err := range e.errs {
 		fmt.Fprintf(w, "\t%v\n", err)
 	}
+
+	return false
 }
