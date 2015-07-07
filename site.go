@@ -211,7 +211,7 @@ func (s *site) build() (ok bool) {
 
 func (s *site) withPool(fn func()) {
 	wg := sync.WaitGroup{}
-	s.workCh = make(chan func(), 64)
+	s.workCh = make(chan func(), 2048)
 
 	for i := 0; i < runtime.GOMAXPROCS(-1); i++ {
 		wg.Add(1)
