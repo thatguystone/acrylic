@@ -1,6 +1,12 @@
 package main
 
 type config struct {
+	// Site title
+	Title string
+
+	// URL to use for absolute URLs
+	SiteURL string
+
 	// Directories where to find stuff
 	AssetsDir    string
 	CacheDir     string
@@ -9,16 +15,13 @@ type config struct {
 	PublicDir    string
 	TemplatesDir string
 
-	// Site title
-	Title string
-
 	// Items to put in the nav bar
-	Navs nav
+	Nav nav
 
 	// Number of posts to put per page
 	PerPage int
 
-	// CSS/SASS files to throw on the pages
+	// CSS/SCSS files to throw on the pages
 	CSS []string
 
 	// JS files to throw on the pages
@@ -28,6 +31,7 @@ type config struct {
 	JSCompiler []string
 
 	// For debugging
+	Watch     bool
 	Debug     bool
 	DebugPort int
 }
@@ -43,7 +47,7 @@ type nav struct {
 func newConfig() *config {
 	return &config{
 		AssetsDir:    "assets/",
-		CacheDir:     "cache/",
+		CacheDir:     ".cache/",
 		ContentDir:   "content/",
 		DataDir:      "data/",
 		PublicDir:    "public/",

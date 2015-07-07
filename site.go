@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/flosch/pongo2"
+	"github.com/russross/blackfriday"
 	"github.com/tdewolff/minify"
 	min_css "github.com/tdewolff/minify/css"
 	min_html "github.com/tdewolff/minify/html"
@@ -80,15 +81,16 @@ type images struct {
 }
 
 type image struct {
-	s     *site
-	src   string
-	dst   string
-	info  os.FileInfo
-	Cat   string
-	Title string
-	Date  time.Time
-	url   string
-	Meta  map[string]interface{}
+	s         *site
+	src       string
+	dst       string
+	info      os.FileInfo
+	Cat       string
+	Title     string
+	Date      time.Time
+	url       string
+	Meta      map[string]interface{}
+	isContent bool
 }
 
 type blob struct {
@@ -96,9 +98,20 @@ type blob struct {
 	dst string
 }
 
-type acrylicTmpl struct {
+type tmplAC struct {
 	s  *site
 	pg *page
+}
+
+type tmplDims struct {
+	L  tmplDim
+	M  tmplDim
+	S  tmplDim
+	XS tmplDim
+}
+
+type tmplDim struct {
+	W, H int
 }
 
 const (
@@ -116,11 +129,34 @@ var (
 	reCSSDims   = regexp.MustCompile(`\d*x\d*`)
 )
 
-func (s *site) buildAndWatch() {
-	s.build()
+func init() {
+	pongo2.RegisterFilter("markdown", filterMarkdown)
 }
 
-func (s *site) build() {
+func (s *site) buildAndWatch() {
+	s.build()
+
+	fnot := fwatch()
+	defer fnot.close()
+
+	fnot.addDir(filepath.Join(s.baseDir, s.cfg.AssetsDir))
+	fnot.addDir(filepath.Join(s.baseDir, s.cfg.CacheDir))
+	fnot.addDir(filepath.Join(s.baseDir, s.cfg.ContentDir))
+	fnot.addDir(filepath.Join(s.baseDir, s.cfg.DataDir))
+	fnot.addDir(filepath.Join(s.baseDir, s.cfg.TemplatesDir))
+
+	timer := time.NewTimer(time.Hour)
+	timer.Stop()
+	defer timer.Stop()
+
+	for path := range fnot.changed {
+		for _, arg := range s.args {
+			fmt.Println(arg, path)
+		}
+	}
+}
+
+func (s *site) build() (ok bool) {
 	s.ss = newSiteState(s)
 	defer func() {
 		s.ss = nil
@@ -162,13 +198,15 @@ func (s *site) build() {
 		paths = append(paths, path)
 	}
 
-	sort.Reverse(sort.StringSlice(paths))
+	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
 
 	// Sorted in reverse, this should make sure that any empty directories are
 	// removed recursively
 	for _, path := range paths {
 		os.Remove(path)
 	}
+
+	return true
 }
 
 func (s *site) withPool(fn func()) {
@@ -198,7 +236,14 @@ func (s *site) jobRunner(exitWg *sync.WaitGroup) {
 
 func (s *site) workIt(fn func()) {
 	s.workWg.Add(1)
-	s.workCh <- fn
+
+	select {
+	case s.workCh <- fn:
+	default:
+		go func() {
+			s.workCh <- fn
+		}()
+	}
 }
 
 func (s *site) renderPages() {
@@ -359,12 +404,14 @@ func (s *site) renderAssets() {
 }
 
 func (s *site) compileScss(in io.Reader, out io.Writer) error {
-	ctx := libsass.Context{}
+	ctx := libsass.NewContext()
 
 	err := ctx.Compile(in, out)
 	if err != nil {
 		return fmt.Errorf("failed to compile: %v", err)
 	}
+
+	io.Copy(out, in)
 
 	return nil
 }
@@ -486,7 +533,7 @@ func (s *site) renderPage(pg *page) {
 		pg.Content = content[start+len(scissors) : end]
 
 		end := strings.Index(pg.Content, moreScissors)
-		if end >= -1 {
+		if end >= 0 {
 			pg.Summary = pg.Content[:end]
 		}
 	}
@@ -565,10 +612,7 @@ func (s *site) renderListPage(pg *page) {
 
 func (s *site) tmplVars(pg *page) pongo2.Context {
 	return pongo2.Context{
-		"ac": &acrylicTmpl{
-			s:  s,
-			pg: pg,
-		},
+		"ac":   newTmplAC(s, pg),
 		"page": pg,
 	}
 }
@@ -671,9 +715,9 @@ func (s *site) loadData(file string, info os.FileInfo) {
 	}
 
 	if v, ok := v.(map[string]interface{}); ok {
-		if until, ok := v["acrylic_cache"].(uint64); ok {
+		if until, ok := v["acrylic_expires"].(float64); ok {
 			b := bytes.Buffer{}
-			binary.Write(&b, binary.BigEndian, until)
+			binary.Write(&b, binary.BigEndian, uint64(until))
 			b.Write(data)
 
 			err = fWrite(cached, b.Bytes())
@@ -699,7 +743,7 @@ func (s *site) loadContent(file string, info os.FileInfo) {
 		s.loadPage(file, info)
 
 	case ".jpg", ".gif", ".png":
-		s.loadImg(file, info, s.cfg.ContentDir)
+		s.loadImg(file, info, true)
 
 	case ".meta":
 		// Ignore these
@@ -713,7 +757,7 @@ func (s *site) loadAssetImages(file string, info os.FileInfo) {
 	if !info.IsDir() {
 		switch filepath.Ext(file) {
 		case ".jpg", ".gif", ".png":
-			s.loadImg(file, info, "")
+			s.loadImg(file, info, false)
 		}
 	}
 }
@@ -770,7 +814,12 @@ func (s *site) loadPage(file string, info os.FileInfo) {
 	})
 }
 
-func (s *site) loadImg(file string, info os.FileInfo, rootDir string) {
+func (s *site) loadImg(file string, info os.FileInfo, isContent bool) {
+	rootDir := ""
+	if isContent {
+		rootDir = s.cfg.ContentDir
+	}
+
 	category, date, _, url, dst := s.getOutInfo(file, rootDir, false)
 
 	metaFile := file + ".meta"
@@ -795,15 +844,16 @@ func (s *site) loadImg(file string, info os.FileInfo, rootDir string) {
 	}
 
 	s.ss.addImage(&image{
-		s:     s,
-		src:   file,
-		dst:   dst,
-		info:  info,
-		Cat:   category,
-		Title: title,
-		Date:  date,
-		url:   url,
-		Meta:  fm,
+		s:         s,
+		src:       file,
+		dst:       dst,
+		info:      info,
+		Cat:       category,
+		Title:     title,
+		Date:      date,
+		url:       url,
+		Meta:      fm,
+		isContent: isContent,
 	})
 }
 
@@ -1039,6 +1089,7 @@ func (img *image) Scale(w, h int, crop bool, quality int) string {
 	img.s.workIt(func() {
 		dst := fChangeExt(img.dst, suffix)
 		if !fSrcChanged(img.src, dst) {
+			img.updateDst(dst)
 			return
 		}
 
@@ -1055,13 +1106,18 @@ func (img *image) Scale(w, h int, crop bool, quality int) string {
 		}
 
 		args = append(args, dst)
+		err := fCreateParents(dst)
+		if err != nil {
+			img.s.errs.add(img.src, fmt.Errorf("failed to scale: %v", err))
+			return
+		}
 
 		cmd := exec.Command("convert", args...)
 
 		eb := bytes.Buffer{}
 		cmd.Stderr = &eb
 
-		err := cmd.Run()
+		err = cmd.Run()
 		if err != nil {
 			img.s.errs.add(img.src,
 				fmt.Errorf("failed to scale: %v: stderr=%s", err, eb.String()))
@@ -1092,12 +1148,23 @@ func (ps pageSlice) Len() int           { return len(ps) }
 func (ps pageSlice) Less(i, j int) bool { return ps[i].src > ps[j].src }
 func (ps pageSlice) Swap(i, j int)      { ps[i], ps[j] = ps[j], ps[i] }
 
-func (at *acrylicTmpl) Img(src string) *image {
-	path := filepath.Join(at.pg.src, "../", src)
-	img := at.s.ss.imgs.get(path)
+func newTmplAC(s *site, pg *page) *tmplAC {
+	return &tmplAC{
+		s:  s,
+		pg: pg,
+	}
+}
+
+func (ac *tmplAC) Img(src string) *image {
+	path := src
+	if !strings.HasPrefix(src, ac.s.cfg.ContentDir) {
+		path = filepath.Join(ac.pg.src, "../", src)
+	}
+
+	img := ac.s.ss.imgs.get(path)
 
 	if img == nil {
-		at.s.errs.add(at.pg.src,
+		ac.s.errs.add(ac.pg.src,
 			fmt.Errorf("image not found: %s (resolved to %s)", src, path))
 		return nil
 	}
@@ -1105,38 +1172,69 @@ func (at *acrylicTmpl) Img(src string) *image {
 	return img
 }
 
-func (at *acrylicTmpl) JSTags() *pongo2.Value {
+func (ac *tmplAC) AllImgs() []string {
+	var ret []string
+
+	for _, img := range ac.s.ss.imgs.imgs {
+		if img.isContent {
+			ret = append(ret, img.src)
+		}
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(ret)))
+
+	return ret
+}
+
+func (ac *tmplAC) Dims(lw, lh, mw, mh, sw, sh, xsw, xsh int) tmplDims {
+	return tmplDims{
+		L:  tmplDim{lw, lh},
+		M:  tmplDim{mw, mh},
+		S:  tmplDim{sw, sh},
+		XS: tmplDim{xsw, xsh},
+	}
+}
+
+func (ac *tmplAC) JSTags() *pongo2.Value {
 	b := bytes.Buffer{}
 
-	if !at.s.cfg.Debug {
+	if !ac.s.cfg.Debug {
 		fmt.Fprintf(&b,
 			`<script type="text/javascript" src="/%s"></script>`,
-			filepath.Join(at.s.cfg.AssetsDir, "all.js"))
+			filepath.Join(ac.s.cfg.AssetsDir, "all.js"))
 	} else {
-		for _, js := range at.s.cfg.JS {
+		for _, js := range ac.s.cfg.JS {
 			fmt.Fprintf(&b,
 				`<script type="text/javascript" src="/%s"></script>`,
-				filepath.Join(at.s.cfg.AssetsDir, js))
+				filepath.Join(ac.s.cfg.AssetsDir, js))
 		}
 	}
 
 	return pongo2.AsSafeValue(b.String())
 }
 
-func (at *acrylicTmpl) CSSTags() *pongo2.Value {
+func (ac *tmplAC) CSSTags() *pongo2.Value {
 	b := bytes.Buffer{}
 
-	if !at.s.cfg.Debug {
+	if !ac.s.cfg.Debug {
 		fmt.Fprintf(&b,
 			`<link rel="stylesheet" href="/%s" />`,
-			filepath.Join(at.s.cfg.AssetsDir, "all.css"))
+			filepath.Join(ac.s.cfg.AssetsDir, "all.css"))
 	} else {
-		for _, css := range at.s.cfg.CSS {
+		for _, css := range ac.s.cfg.CSS {
 			fmt.Fprintf(&b,
 				`<link rel="stylesheet" href="/%s" />`,
-				filepath.Join(at.s.cfg.AssetsDir, fChangeExt(css, ".css")))
+				filepath.Join(ac.s.cfg.AssetsDir, fChangeExt(css, ".css")))
 		}
 	}
 
 	return pongo2.AsSafeValue(b.String())
+}
+
+func filterMarkdown(in *pongo2.Value, param *pongo2.Value) (
+	out *pongo2.Value,
+	err *pongo2.Error) {
+
+	out = pongo2.AsSafeValue(string(blackfriday.MarkdownCommon([]byte(in.String()))))
+	return
 }

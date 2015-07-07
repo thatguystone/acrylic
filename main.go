@@ -22,15 +22,15 @@ func main() {
 func run(args []string, baseDir string, logOut io.Writer) bool {
 	cfg := newConfig()
 
-	for i := len(args) - 1; i >= 0; i-- {
-		b, err := ioutil.ReadFile(args[i])
+	for _, arg := range args {
+		b, err := ioutil.ReadFile(arg)
 		if err != nil {
 			panic(fmt.Errorf("failed to read config file: %v", err))
 		}
 
 		err = yaml.Unmarshal(b, cfg)
 		if err != nil {
-			panic(fmt.Errorf("failed to parse %s: %v", args[i], err))
+			panic(fmt.Errorf("failed to parse %s: %v", arg, err))
 		}
 	}
 
@@ -41,11 +41,14 @@ func run(args []string, baseDir string, logOut io.Writer) bool {
 		baseDir: baseDir,
 	}
 
-	if cfg.Debug {
+	if cfg.Watch {
 		s.buildAndWatch()
 	} else {
-		s.build()
+		ok := s.build()
+		if !ok {
+			os.Exit(1)
+		}
 	}
 
-	return cfg.Debug
+	return cfg.Watch
 }
