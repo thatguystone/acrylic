@@ -94,7 +94,7 @@ func buildWatchAndServe(
 
 	fmt.Printf("Serving on %s ...\n", cfg.DebugAddr)
 
-	fnot := fwatch()
+	fnot := newFnotify()
 	defer fnot.close()
 
 	fnot.addDir(filepath.Join(baseDir, cfg.AssetsDir))

@@ -17,7 +17,7 @@ type fnotify struct {
 
 const changedDelay = 40 * time.Millisecond
 
-func fwatch() *fnotify {
+func newFnotify() *fnotify {
 	fnot := &fnotify{
 		exitCh:  make(chan struct{}),
 		changed: make(chan string, 8),
