@@ -1025,6 +1025,10 @@ func (imgs *images) get(path string) *image {
 }
 
 func (img *image) Scale(w, h int, crop bool, quality int) string {
+	if quality == 0 {
+		quality = 100
+	}
+
 	if w == 0 && h == 0 && !crop && quality == 100 {
 		img.s.workIt(img.copy)
 		return img.URL
@@ -1049,10 +1053,6 @@ func (img *image) Scale(w, h int, crop bool, quality int) string {
 	if crop {
 		suffix += "c"
 		scaleDims += "^"
-	}
-
-	if quality == 0 {
-		quality = 100
 	}
 
 	if quality != 100 {
