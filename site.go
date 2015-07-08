@@ -506,8 +506,7 @@ func (s *site) renderPage(pg *page) {
 		}
 	}
 
-	dst := filepath.Join(s.baseDir, s.cfg.PublicDir, pg.URL)
-	s.ss.markUsed(dst)
+	s.ss.markUsed(pg.dst)
 
 	if !s.cfg.Debug {
 		b := bytes.Buffer{}
@@ -520,7 +519,7 @@ func (s *site) renderPage(pg *page) {
 		content = b.String()
 	}
 
-	err = fWrite(dst, []byte(content))
+	err = fWrite(pg.dst, []byte(content))
 	if err != nil {
 		s.errs.add(pg.src, err)
 		return
@@ -549,16 +548,17 @@ func (s *site) renderListPage(pg *page) {
 
 		content, err := tmpl.Execute(s.tmplVars(pg).Update(
 			pongo2.Context{
-				"page":    pg,
-				"pages":   pages[listStart:listEnd],
-				"pageNum": i,
+				"page":        pg,
+				"pages":       pages[listStart:listEnd],
+				"pageNum":     i + 1,
+				"listHasNext": i < (pageCount - 1),
 			}))
 		if err != nil {
 			s.errs.add(pg.src, err)
 			return
 		}
 
-		dst := filepath.Join(s.baseDir, s.cfg.PublicDir, pg.URL)
+		dst := pg.dst
 		if i > 0 {
 			dst = filepath.Join(
 				s.baseDir,
@@ -849,8 +849,8 @@ func (s *site) getOutInfo(file, dir string, isPage bool) (
 	name = fDropRoot(s.baseDir, dir, file)
 
 	if strings.Count(name, "/") == 0 {
-		url = filepath.Join(name)
-		dst = filepath.Join(s.baseDir, s.cfg.PublicDir, url)
+		url = filepath.Clean(name)
+		dst = filepath.Join(s.baseDir, s.cfg.PublicDir, name)
 		return
 	}
 
@@ -878,14 +878,17 @@ func (s *site) getOutInfo(file, dir string, isPage bool) (
 		url = filepath.Join(cat, date.Format("2006/01/02"), name)
 	}
 
+	dst = filepath.Join(s.baseDir, s.cfg.PublicDir, url)
+
 	if isPage {
-		url = filepath.Join(url, "index.html")
+		dst = filepath.Join(dst, "index.html")
+		url += "/"
 	} else {
+		dst = filepath.Join(dst, filepath.Base(file))
 		url = filepath.Join(url, filepath.Base(file))
 	}
 
 	url = "/" + url
-	dst = filepath.Join(s.baseDir, s.cfg.PublicDir, url)
 
 	return
 }

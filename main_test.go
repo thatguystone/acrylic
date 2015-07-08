@@ -76,8 +76,10 @@ func testNew(tb testing.TB, cfgs []string, files ...testFile) *test {
 	run(cfgs, tt.root, &b, true)
 	if b.Len() > 0 {
 		tb.Log(b.String())
-		tb.Fail()
+		tb.FailNow()
 	}
+
+	tt.a.Logf("Generated files:\n%s", tt.tree(tt.root, "public/"))
 
 	return &tt
 }
@@ -95,6 +97,29 @@ func (t *test) contents(path, c string) {
 	t.a.MustNotError(err)
 
 	t.a.Equal(c, string(fc), "content mismatch for %s", path)
+}
+
+func (t *test) tree(root, dir string) string {
+	root = filepath.Join(root, dir)
+
+	if !dExists(root) {
+		return ""
+	}
+
+	b := bytes.Buffer{}
+
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+
+		b.WriteString("\t" + fDropRoot(root, "", path) + "\n")
+		return nil
+	})
+
+	t.a.MustNotError(err, "failed to walk %s", root)
+
+	return b.String()
 }
 
 func TestBasic(t *testing.T) {
