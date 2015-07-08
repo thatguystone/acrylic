@@ -73,7 +73,7 @@ func testNew(tb testing.TB, cfgs []string, files ...testFile) *test {
 	}
 
 	b := bytes.Buffer{}
-	run(cfgs, tt.root, &b)
+	run(cfgs, tt.root, &b, true)
 	if b.Len() > 0 {
 		tb.Log(b.String())
 		tb.Fail()

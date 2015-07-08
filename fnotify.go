@@ -43,6 +43,13 @@ func (fnot *fnotify) addDir(dir string) {
 	fnot.doRecursive(dir, true)
 }
 
+func (fnot *fnotify) addFile(path string) {
+	err := fnot.watcher.Add(path)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func (fnot *fnotify) doRecursive(p string, add bool) {
 	mod := func(p string) {
 		var err error

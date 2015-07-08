@@ -20,12 +20,10 @@ import (
 	"time"
 
 	"github.com/flosch/pongo2"
-	"github.com/russross/blackfriday"
 	"github.com/tdewolff/minify"
 	min_css "github.com/tdewolff/minify/css"
 	min_html "github.com/tdewolff/minify/html"
 	min_js "github.com/tdewolff/minify/js"
-	libsass "github.com/wellington/go-libsass"
 	"gopkg.in/yaml.v2"
 )
 
@@ -68,7 +66,7 @@ type page struct {
 	Date       time.Time
 	Content    string
 	Summary    string
-	url        string
+	URL        string
 	isListPage bool
 	Meta       map[string]interface{}
 }
@@ -88,30 +86,14 @@ type image struct {
 	Cat       string
 	Title     string
 	Date      time.Time
-	url       string
+	URL       string
 	Meta      map[string]interface{}
-	isContent bool
+	inGallery bool
 }
 
 type blob struct {
 	src string
 	dst string
-}
-
-type tmplAC struct {
-	s  *site
-	pg *page
-}
-
-type tmplDims struct {
-	L  tmplDim
-	M  tmplDim
-	S  tmplDim
-	XS tmplDim
-}
-
-type tmplDim struct {
-	W, H int
 }
 
 const (
@@ -128,33 +110,6 @@ var (
 	reCSSScaled = regexp.MustCompile(`.*(\.((\d*)x(\d*)(c?)(-q(\d*))?)).*`)
 	reCSSDims   = regexp.MustCompile(`\d*x\d*`)
 )
-
-func init() {
-	pongo2.RegisterFilter("markdown", filterMarkdown)
-}
-
-func (s *site) buildAndWatch() {
-	s.build()
-
-	fnot := fwatch()
-	defer fnot.close()
-
-	fnot.addDir(filepath.Join(s.baseDir, s.cfg.AssetsDir))
-	fnot.addDir(filepath.Join(s.baseDir, s.cfg.CacheDir))
-	fnot.addDir(filepath.Join(s.baseDir, s.cfg.ContentDir))
-	fnot.addDir(filepath.Join(s.baseDir, s.cfg.DataDir))
-	fnot.addDir(filepath.Join(s.baseDir, s.cfg.TemplatesDir))
-
-	timer := time.NewTimer(time.Hour)
-	timer.Stop()
-	defer timer.Stop()
-
-	for path := range fnot.changed {
-		for _, arg := range s.args {
-			fmt.Println(arg, path)
-		}
-	}
-}
 
 func (s *site) build() (ok bool) {
 	s.ss = newSiteState(s)
@@ -211,7 +166,7 @@ func (s *site) build() (ok bool) {
 
 func (s *site) withPool(fn func()) {
 	wg := sync.WaitGroup{}
-	s.workCh = make(chan func(), 2048)
+	s.workCh = make(chan func(), 8192)
 
 	for i := 0; i < runtime.GOMAXPROCS(-1); i++ {
 		wg.Add(1)
@@ -262,6 +217,23 @@ func (s *site) renderPages() {
 	}
 }
 
+func (s *site) copyFile(src, dst string) {
+	err := fCopy(src, dst)
+	if err != nil {
+		s.errs.add(src, fmt.Errorf("failed to copy: %v", err))
+		return
+	}
+
+	info, err := os.Stat(src)
+	if err != nil {
+		s.errs.add(src, err)
+		return
+	}
+
+	os.Chtimes(dst, info.ModTime(), info.ModTime())
+	s.ss.markUsed(dst)
+}
+
 func (s *site) renderAssets() {
 	assetPath := func(path string) (src, dst string) {
 		src = filepath.Join(s.baseDir, s.cfg.AssetsDir, path)
@@ -270,14 +242,7 @@ func (s *site) renderAssets() {
 	}
 
 	rawCopy := func(src string) {
-		src, dst := assetPath(src)
-		err := fCopy(src, dst)
-		if err != nil {
-			s.errs.add(src, fmt.Errorf("failed to copy: %v", err))
-			return
-		}
-
-		s.ss.markUsed(dst)
+		s.copyFile(assetPath(src))
 	}
 
 	if s.cfg.Debug {
@@ -404,14 +369,18 @@ func (s *site) renderAssets() {
 }
 
 func (s *site) compileScss(in io.Reader, out io.Writer) error {
-	ctx := libsass.NewContext()
+	cmd := exec.Command(s.cfg.SassCompiler[0], s.cfg.SassCompiler[1:]...)
 
-	err := ctx.Compile(in, out)
-	if err != nil {
-		return fmt.Errorf("failed to compile: %v", err)
+	cmd.Stdin = in
+	cmd.Stdout = out
+
+	eb := bytes.Buffer{}
+	cmd.Stderr = &eb
+
+	err := cmd.Run()
+	if err != nil || eb.Len() > 0 {
+		return fmt.Errorf("execute failed: %v, stderr=%s", err, eb.String())
 	}
-
-	io.Copy(out, in)
 
 	return nil
 }
@@ -419,10 +388,12 @@ func (s *site) compileScss(in io.Reader, out io.Writer) error {
 func (s *site) compileScssToFile(path, dstPath string) {
 	var dst io.ReadWriteCloser
 
+	dstPath = fChangeExt(dstPath, ".css")
+
 	src, err := os.Open(path)
 	if err == nil {
 		defer src.Close()
-		dst, err = fCreate(fChangeExt(dstPath, ".css"))
+		dst, err = fCreate(dstPath)
 	}
 
 	if err == nil {
@@ -487,10 +458,7 @@ func (s *site) copyBlobs() {
 	for _, b := range s.ss.blobs {
 		func(b *blob) {
 			s.workIt(func() {
-				err := fCopy(b.src, b.dst)
-				if err != nil {
-					s.errs.add(b.src, fmt.Errorf("failed to copy: %v", err))
-				}
+				s.copyFile(b.src, b.dst)
 			})
 		}(b)
 	}
@@ -538,7 +506,7 @@ func (s *site) renderPage(pg *page) {
 		}
 	}
 
-	dst := filepath.Join(s.baseDir, s.cfg.PublicDir, pg.url)
+	dst := filepath.Join(s.baseDir, s.cfg.PublicDir, pg.URL)
 	s.ss.markUsed(dst)
 
 	if !s.cfg.Debug {
@@ -590,12 +558,12 @@ func (s *site) renderListPage(pg *page) {
 			return
 		}
 
-		dst := filepath.Join(s.baseDir, s.cfg.PublicDir, pg.url)
+		dst := filepath.Join(s.baseDir, s.cfg.PublicDir, pg.URL)
 		if i > 0 {
 			dst = filepath.Join(
 				s.baseDir,
 				s.cfg.PublicDir,
-				filepath.Dir(pg.url),
+				filepath.Dir(pg.URL),
 				"page", fmt.Sprintf("%d", i+1),
 				"index.html")
 		}
@@ -726,6 +694,8 @@ func (s *site) loadData(file string, info os.FileInfo) {
 				return
 			}
 		}
+
+		delete(v, "acrylic_expires")
 	}
 
 	s.ss.mtx.Lock()
@@ -808,7 +778,7 @@ func (s *site) loadPage(file string, info os.FileInfo) {
 		Title:      title,
 		Date:       date,
 		Content:    string(c),
-		url:        url,
+		URL:        url,
 		isListPage: isListPage,
 		Meta:       fm,
 	})
@@ -843,6 +813,11 @@ func (s *site) loadImg(file string, info os.FileInfo, isContent bool) {
 		title = t
 	}
 
+	inGallery := isContent
+	if g, ok := fm["gallery"].(bool); ok {
+		inGallery = g
+	}
+
 	s.ss.addImage(&image{
 		s:         s,
 		src:       file,
@@ -851,9 +826,9 @@ func (s *site) loadImg(file string, info os.FileInfo, isContent bool) {
 		Cat:       category,
 		Title:     title,
 		Date:      date,
-		url:       url,
+		URL:       url,
 		Meta:      fm,
-		isContent: isContent,
+		inGallery: inGallery,
 	})
 }
 
@@ -1052,7 +1027,7 @@ func (imgs *images) get(path string) *image {
 func (img *image) Scale(w, h int, crop bool, quality int) string {
 	if w == 0 && h == 0 && !crop && quality == 100 {
 		img.s.workIt(img.copy)
-		return img.url
+		return img.URL
 	}
 
 	dims := ""
@@ -1120,14 +1095,16 @@ func (img *image) Scale(w, h int, crop bool, quality int) string {
 		err = cmd.Run()
 		if err != nil {
 			img.s.errs.add(img.src,
-				fmt.Errorf("failed to scale: %v: stderr=%s", err, eb.String()))
+				fmt.Errorf("failed to scale: %v: stderr=%s",
+					err,
+					eb.String()))
 			return
 		}
 
 		img.updateDst(dst)
 	})
 
-	return fChangeExt(img.url, suffix)
+	return fChangeExt(img.URL, suffix)
 }
 
 func (img *image) copy() {
@@ -1147,94 +1124,3 @@ func (img *image) updateDst(dst string) {
 func (ps pageSlice) Len() int           { return len(ps) }
 func (ps pageSlice) Less(i, j int) bool { return ps[i].src > ps[j].src }
 func (ps pageSlice) Swap(i, j int)      { ps[i], ps[j] = ps[j], ps[i] }
-
-func newTmplAC(s *site, pg *page) *tmplAC {
-	return &tmplAC{
-		s:  s,
-		pg: pg,
-	}
-}
-
-func (ac *tmplAC) Img(src string) *image {
-	path := src
-	if !strings.HasPrefix(src, ac.s.cfg.ContentDir) {
-		path = filepath.Join(ac.pg.src, "../", src)
-	}
-
-	img := ac.s.ss.imgs.get(path)
-
-	if img == nil {
-		ac.s.errs.add(ac.pg.src,
-			fmt.Errorf("image not found: %s (resolved to %s)", src, path))
-		return nil
-	}
-
-	return img
-}
-
-func (ac *tmplAC) AllImgs() []string {
-	var ret []string
-
-	for _, img := range ac.s.ss.imgs.imgs {
-		if img.isContent {
-			ret = append(ret, img.src)
-		}
-	}
-
-	sort.Sort(sort.Reverse(sort.StringSlice(ret)))
-
-	return ret
-}
-
-func (ac *tmplAC) Dims(lw, lh, mw, mh, sw, sh, xsw, xsh int) tmplDims {
-	return tmplDims{
-		L:  tmplDim{lw, lh},
-		M:  tmplDim{mw, mh},
-		S:  tmplDim{sw, sh},
-		XS: tmplDim{xsw, xsh},
-	}
-}
-
-func (ac *tmplAC) JSTags() *pongo2.Value {
-	b := bytes.Buffer{}
-
-	if !ac.s.cfg.Debug {
-		fmt.Fprintf(&b,
-			`<script type="text/javascript" src="/%s"></script>`,
-			filepath.Join(ac.s.cfg.AssetsDir, "all.js"))
-	} else {
-		for _, js := range ac.s.cfg.JS {
-			fmt.Fprintf(&b,
-				`<script type="text/javascript" src="/%s"></script>`,
-				filepath.Join(ac.s.cfg.AssetsDir, js))
-		}
-	}
-
-	return pongo2.AsSafeValue(b.String())
-}
-
-func (ac *tmplAC) CSSTags() *pongo2.Value {
-	b := bytes.Buffer{}
-
-	if !ac.s.cfg.Debug {
-		fmt.Fprintf(&b,
-			`<link rel="stylesheet" href="/%s" />`,
-			filepath.Join(ac.s.cfg.AssetsDir, "all.css"))
-	} else {
-		for _, css := range ac.s.cfg.CSS {
-			fmt.Fprintf(&b,
-				`<link rel="stylesheet" href="/%s" />`,
-				filepath.Join(ac.s.cfg.AssetsDir, fChangeExt(css, ".css")))
-		}
-	}
-
-	return pongo2.AsSafeValue(b.String())
-}
-
-func filterMarkdown(in *pongo2.Value, param *pongo2.Value) (
-	out *pongo2.Value,
-	err *pongo2.Error) {
-
-	out = pongo2.AsSafeValue(string(blackfriday.MarkdownCommon([]byte(in.String()))))
-	return
-}

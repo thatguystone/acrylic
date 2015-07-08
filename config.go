@@ -1,5 +1,7 @@
 package main
 
+import "os/exec"
+
 type config struct {
 	// Site title
 	Title string
@@ -16,7 +18,7 @@ type config struct {
 	TemplatesDir string
 
 	// Items to put in the nav bar
-	Nav nav
+	Nav []nav
 
 	// Number of posts to put per page
 	PerPage int
@@ -27,13 +29,15 @@ type config struct {
 	// JS files to throw on the pages
 	JS []string
 
-	// Args for JS compiler
+	// Args to run a sass compile
+	SassCompiler []string
+
+	// Args to run a JS compiler
 	JSCompiler []string
 
 	// For debugging
-	Watch     bool
 	Debug     bool
-	DebugPort int
+	DebugAddr string
 }
 
 type nav struct {
@@ -44,7 +48,21 @@ type nav struct {
 	URL string
 }
 
+var sassCmds = [][]string{
+	[]string{"sass", "--scss"},
+	[]string{"sassc"},
+}
+
 func newConfig() *config {
+	sassCmd := sassCmds[0]
+	for _, cmd := range sassCmds {
+		_, err := exec.LookPath(cmd[0])
+		if err == nil {
+			sassCmd = cmd
+			break
+		}
+	}
+
 	return &config{
 		AssetsDir:    "assets/",
 		CacheDir:     ".cache/",
@@ -53,6 +71,7 @@ func newConfig() *config {
 		PublicDir:    "public/",
 		TemplatesDir: "templates/",
 		PerPage:      5,
-		DebugPort:    8000,
+		SassCompiler: sassCmd,
+		DebugAddr:    ":8000",
 	}
 }
