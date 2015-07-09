@@ -329,19 +329,20 @@ func (s *site) renderAssets() {
 		b := bytes.Buffer{}
 		for _, css := range s.cfg.CSS {
 			src, _ := assetPath(css)
-			f, err := os.Open(src)
-			if err != nil {
-				s.errs.add(src, err)
-				return
-			}
 
+			var err error
 			if filepath.Ext(src) == ".scss" {
-				err = s.compileScss(f, &b)
+				err = s.compileScss(src, &b)
 			} else {
-				_, err = b.ReadFrom(f)
-			}
+				f, err := os.Open(src)
+				if err != nil {
+					s.errs.add(src, err)
+					return
+				}
 
-			f.Close()
+				_, err = b.ReadFrom(f)
+				f.Close()
+			}
 
 			if err != nil {
 				s.errs.add(src, err)
@@ -368,10 +369,12 @@ func (s *site) renderAssets() {
 	})
 }
 
-func (s *site) compileScss(in io.Reader, out io.Writer) error {
-	cmd := exec.Command(s.cfg.SassCompiler[0], s.cfg.SassCompiler[1:]...)
+func (s *site) compileScss(src string, out io.Writer) error {
+	args := append([]string{}, s.cfg.SassCompiler...)
+	args = append(args, src)
 
-	cmd.Stdin = in
+	cmd := exec.Command(args[0], args[1:]...)
+
 	cmd.Stdout = out
 
 	eb := bytes.Buffer{}
@@ -385,24 +388,19 @@ func (s *site) compileScss(in io.Reader, out io.Writer) error {
 	return nil
 }
 
-func (s *site) compileScssToFile(path, dstPath string) {
+func (s *site) compileScssToFile(src, dstPath string) {
 	var dst io.ReadWriteCloser
 
 	dstPath = fChangeExt(dstPath, ".css")
 
-	src, err := os.Open(path)
-	if err == nil {
-		defer src.Close()
-		dst, err = fCreate(dstPath)
-	}
-
+	dst, err := fCreate(dstPath)
 	if err == nil {
 		defer dst.Close()
 		err = s.compileScss(src, dst)
 	}
 
 	if err != nil {
-		s.errs.add(path, err)
+		s.errs.add(src, err)
 	} else {
 		s.ss.markUsed(dstPath)
 	}
@@ -712,7 +710,7 @@ func (s *site) loadContent(file string, info os.FileInfo) {
 	case ".html":
 		s.loadPage(file, info)
 
-	case ".jpg", ".gif", ".png":
+	case ".jpg", ".gif", ".png", ".svg":
 		s.loadImg(file, info, true)
 
 	case ".meta":
@@ -726,7 +724,7 @@ func (s *site) loadContent(file string, info os.FileInfo) {
 func (s *site) loadAssetImages(file string, info os.FileInfo) {
 	if !info.IsDir() {
 		switch filepath.Ext(file) {
-		case ".jpg", ".gif", ".png":
+		case ".jpg", ".gif", ".png", ".svg":
 			s.loadImg(file, info, false)
 		}
 	}
