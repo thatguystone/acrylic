@@ -633,7 +633,7 @@ func (s *site) loadData(file string, info os.FileInfo) {
 	name := fDropRoot(s.baseDir, s.cfg.DataDir, file)
 	cached := filepath.Join(s.baseDir, s.cfg.CacheDir, "data", name)
 
-	if fExists(cached) {
+	if fExists(cached) && !fSrcChanged(file, cached) {
 		data, err = ioutil.ReadFile(cached)
 		if err != nil {
 			s.errs.add(file, err)
@@ -659,13 +659,10 @@ func (s *site) loadData(file string, info os.FileInfo) {
 			cmd.Stderr = &eb
 
 			err := cmd.Run()
-			if err != nil {
-				s.errs.add(file, err)
-				return
-			}
-
-			if eb.Len() > 0 {
-				s.errs.add(file, fmt.Errorf("execute failed: %s", eb.String()))
+			if err != nil || eb.Len() > 0 {
+				s.errs.add(file, fmt.Errorf("execute failed: %v: %s",
+					err,
+					eb.String()))
 				return
 			}
 
@@ -697,6 +694,8 @@ func (s *site) loadData(file string, info os.FileInfo) {
 				s.errs.add(file, fmt.Errorf("failed to write cache file: %v", err))
 				return
 			}
+
+			os.Chtimes(cached, info.ModTime(), info.ModTime())
 		}
 
 		delete(v, "acrylic_expires")
