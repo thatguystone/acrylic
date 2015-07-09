@@ -41,8 +41,9 @@ type site struct {
 }
 
 type siteState struct {
-	min     *minify.Minify
-	tmplSet *pongo2.TemplateSet
+	min       *minify.Minify
+	tmplSet   *pongo2.TemplateSet
+	buildTime time.Time
 
 	mtx     sync.Mutex
 	data    map[string]interface{}
@@ -86,7 +87,7 @@ type image struct {
 	Cat       string
 	Title     string
 	Date      time.Time
-	URL       string
+	url       string
 	Meta      map[string]interface{}
 	inGallery bool
 }
@@ -448,7 +449,14 @@ func (s *site) processCSSAssets(path string) {
 			return
 		}
 
-		img.Scale(w, h, crop, quality)
+		final := img.Scale(w, h, crop, quality)
+		sheet = bytes.Replace(sheet, []byte(absURL), []byte(final), -1)
+	}
+
+	err = ioutil.WriteFile(path, sheet, 0640)
+	if err != nil {
+		s.errs.add(path, err)
+		return
 	}
 }
 
@@ -504,24 +512,7 @@ func (s *site) renderPage(pg *page) {
 		}
 	}
 
-	s.ss.markUsed(pg.dst)
-
-	if !s.cfg.Debug {
-		b := bytes.Buffer{}
-		err = s.ss.min.Minify("text/html", &b, strings.NewReader(content))
-		if err != nil {
-			s.errs.add(pg.src, err)
-			return
-		}
-
-		content = b.String()
-	}
-
-	err = fWrite(pg.dst, []byte(content))
-	if err != nil {
-		s.errs.add(pg.src, err)
-		return
-	}
+	s.writePage(pg, pg.dst, content)
 }
 
 func (s *site) renderListPage(pg *page) {
@@ -566,13 +557,28 @@ func (s *site) renderListPage(pg *page) {
 				"index.html")
 		}
 
-		s.ss.markUsed(dst)
+		s.writePage(pg, dst, content)
+	}
+}
 
-		err = fWrite(dst, []byte(content))
+func (s *site) writePage(pg *page, dst, content string) {
+	s.ss.markUsed(dst)
+
+	if !s.cfg.Debug {
+		b := bytes.Buffer{}
+		err := s.ss.min.Minify("text/html", &b, strings.NewReader(content))
 		if err != nil {
 			s.errs.add(pg.src, err)
 			return
 		}
+
+		content = b.String()
+	}
+
+	err := fWrite(dst, []byte(content))
+	if err != nil {
+		s.errs.add(pg.src, err)
+		return
 	}
 }
 
@@ -824,7 +830,7 @@ func (s *site) loadImg(file string, info os.FileInfo, isContent bool) {
 		Cat:       category,
 		Title:     title,
 		Date:      date,
-		URL:       url,
+		url:       url,
 		Meta:      fm,
 		inGallery: inGallery,
 	})
@@ -902,9 +908,10 @@ func (s *site) parseName(name string) (time.Time, string) {
 
 func newSiteState(s *site) *siteState {
 	ss := &siteState{
-		min:     minify.New(),
-		tmplSet: pongo2.NewSet("acrylic"),
-		data:    map[string]interface{}{},
+		min:       minify.New(),
+		tmplSet:   pongo2.NewSet("acrylic"),
+		buildTime: time.Now(),
+		data:      map[string]interface{}{},
 		pages: pages{
 			byCat: map[string][]*page{},
 		},
@@ -1032,7 +1039,7 @@ func (img *image) Scale(w, h int, crop bool, quality int) string {
 
 	if w == 0 && h == 0 && !crop && quality == 100 {
 		img.s.workIt(img.copy)
-		return img.URL
+		return img.cacheBustedURL(img.url)
 	}
 
 	dims := ""
@@ -1105,7 +1112,11 @@ func (img *image) Scale(w, h int, crop bool, quality int) string {
 		img.updateDst(dst)
 	})
 
-	return fChangeExt(img.URL, suffix)
+	return img.cacheBustedURL(fChangeExt(img.url, suffix))
+}
+
+func (img *image) cacheBustedURL(url string) string {
+	return url + fmt.Sprintf("?%d", img.info.ModTime().Unix())
 }
 
 func (img *image) copy() {

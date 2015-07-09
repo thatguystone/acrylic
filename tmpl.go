@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -91,8 +92,8 @@ func (ac *tmplAC) JSTags() *pongo2.Value {
 
 	if !ac.s.cfg.Debug {
 		fmt.Fprintf(&b,
-			`<script type="text/javascript" src="/%s"></script>`,
-			filepath.Join(ac.s.cfg.AssetsDir, "all.js"))
+			`<script type="text/javascript" src="/%s?%d"></script>`,
+			filepath.Join(ac.s.cfg.AssetsDir, "all.js"), ac.s.ss.buildTime.Unix())
 	} else {
 		for _, js := range ac.s.cfg.JS {
 			fmt.Fprintf(&b,
@@ -109,8 +110,8 @@ func (ac *tmplAC) CSSTags() *pongo2.Value {
 
 	if !ac.s.cfg.Debug {
 		fmt.Fprintf(&b,
-			`<link rel="stylesheet" href="/%s" />`,
-			filepath.Join(ac.s.cfg.AssetsDir, "all.css"))
+			`<link rel="stylesheet" href="/%s?%d" />`,
+			filepath.Join(ac.s.cfg.AssetsDir, "all.css"), ac.s.ss.buildTime.Unix())
 	} else {
 		for _, css := range ac.s.cfg.CSS {
 			fmt.Fprintf(&b,
@@ -120,6 +121,16 @@ func (ac *tmplAC) CSSTags() *pongo2.Value {
 	}
 
 	return pongo2.AsSafeValue(b.String())
+}
+
+func (ac *tmplAC) cacheBuster(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		ac.s.errs.add(path, fmt.Errorf("failed to gen cache buster: %v", err))
+		return ""
+	}
+
+	return fmt.Sprintf("?%d", info.ModTime().Unix())
 }
 
 func filterMarkdown(in *pongo2.Value, param *pongo2.Value) (
