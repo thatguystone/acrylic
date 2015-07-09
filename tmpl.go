@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/flosch/pongo2"
@@ -67,13 +66,11 @@ func (ac *tmplAC) Img(src string) *image {
 func (ac *tmplAC) AllImgs() []string {
 	var ret []string
 
-	for _, img := range ac.s.ss.imgs.imgs {
+	for _, img := range ac.s.ss.imgs.all {
 		if img.inGallery {
 			ret = append(ret, img.src)
 		}
 	}
-
-	sort.Sort(sort.Reverse(sort.StringSlice(ret)))
 
 	return ret
 }

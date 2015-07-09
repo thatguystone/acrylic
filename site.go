@@ -62,6 +62,7 @@ type pages struct {
 type page struct {
 	src        string
 	dst        string
+	sortName   string
 	Cat        string
 	Title      string
 	Date       time.Time
@@ -73,8 +74,10 @@ type page struct {
 }
 
 type pageSlice []*page
+type imageSlice []*image
 
 type images struct {
+	all   []*image
 	imgs  map[string]*image
 	byCat map[string][]*image
 }
@@ -83,6 +86,7 @@ type image struct {
 	s         *site
 	src       string
 	dst       string
+	sortName  string
 	info      os.FileInfo
 	Cat       string
 	Title     string
@@ -154,10 +158,9 @@ func (s *site) build() (ok bool) {
 		paths = append(paths, path)
 	}
 
-	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
-
 	// Sorted in reverse, this should make sure that any empty directories are
 	// removed recursively
+	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
 	for _, path := range paths {
 		os.Remove(path)
 	}
@@ -760,7 +763,7 @@ func (s *site) loadPage(file string, info os.FileInfo) {
 		c = c[end+len(frontMatterEnd):]
 	}
 
-	category, date, name, url, dst := s.getOutInfo(file, s.cfg.ContentDir, true)
+	category, date, name, sortName, url, dst := s.getOutInfo(file, s.cfg.ContentDir, true)
 
 	title := ""
 	if t, ok := fm["title"].(string); ok {
@@ -777,6 +780,7 @@ func (s *site) loadPage(file string, info os.FileInfo) {
 	s.ss.addPage(&page{
 		src:        file,
 		dst:        dst,
+		sortName:   sortName,
 		Cat:        category,
 		Title:      title,
 		Date:       date,
@@ -793,7 +797,7 @@ func (s *site) loadImg(file string, info os.FileInfo, isContent bool) {
 		rootDir = s.cfg.ContentDir
 	}
 
-	category, date, _, url, dst := s.getOutInfo(file, rootDir, false)
+	category, date, _, sortName, url, dst := s.getOutInfo(file, rootDir, false)
 
 	metaFile := file + ".meta"
 	fm := map[string]interface{}{}
@@ -825,6 +829,7 @@ func (s *site) loadImg(file string, info os.FileInfo, isContent bool) {
 		s:         s,
 		src:       file,
 		dst:       dst,
+		sortName:  sortName,
 		info:      info,
 		Cat:       category,
 		Title:     title,
@@ -836,7 +841,7 @@ func (s *site) loadImg(file string, info os.FileInfo, isContent bool) {
 }
 
 func (s *site) loadBlob(file string, info os.FileInfo) {
-	_, _, _, _, dst := s.getOutInfo(file, s.cfg.ContentDir, false)
+	_, _, _, _, _, dst := s.getOutInfo(file, s.cfg.ContentDir, false)
 	s.ss.addBlob(file, dst)
 }
 
@@ -847,7 +852,7 @@ func (s *site) loadPublic(file string, info os.FileInfo) {
 func (s *site) getOutInfo(file, dir string, isPage bool) (
 	cat string,
 	date time.Time,
-	name, url, dst string) {
+	name, sortName, url, dst string) {
 
 	name = fDropRoot(s.baseDir, dir, file)
 
@@ -860,6 +865,7 @@ func (s *site) getOutInfo(file, dir string, isPage bool) (
 	parts := strings.Split(name, "/")
 	if len(parts) == 2 {
 		cat = parts[0]
+		sortName = parts[1]
 		date, name = s.parseName(parts[1])
 	} else {
 		last := parts[len(parts)-2]
@@ -868,10 +874,12 @@ func (s *site) getOutInfo(file, dir string, isPage bool) (
 			date, name = s.parseName(last)
 			cat = filepath.Join(parts[0 : len(parts)-2]...)
 		} else {
-			last := parts[len(parts)-1]
+			last = parts[len(parts)-1]
 			date, name = s.parseName(last)
 			cat = filepath.Join(parts[0 : len(parts)-1]...)
 		}
+
+		sortName = last
 	}
 
 	name = fChangeExt(name, "")
@@ -887,8 +895,10 @@ func (s *site) getOutInfo(file, dir string, isPage bool) (
 		dst = filepath.Join(dst, "index.html")
 		url += "/"
 	} else {
-		dst = filepath.Join(dst, filepath.Base(file))
-		url = filepath.Join(url, filepath.Base(file))
+		base := filepath.Base(file)
+		dst = filepath.Join(dst, base)
+		url = filepath.Join(url, base)
+		sortName = filepath.Join(sortName, base)
 	}
 
 	url = "/" + url
@@ -942,6 +952,7 @@ func (ss *siteState) markUsed(dst string) {
 
 func (ss *siteState) loadFinished() {
 	ss.pages.sort()
+	ss.imgs.sort()
 }
 
 func (ss *siteState) addPage(p *page) {
@@ -1025,6 +1036,16 @@ func (imgs *images) add(img *image) {
 	imgs.byCat[img.Cat] = cat
 
 	imgs.imgs[img.src] = img
+
+	imgs.all = append(imgs.all, img)
+}
+
+func (imgs *images) sort() {
+	sort.Sort(imageSlice(imgs.all))
+
+	for _, ims := range imgs.byCat {
+		sort.Sort(imageSlice(ims))
+	}
 }
 
 func (imgs *images) get(path string) *image {
@@ -1133,5 +1154,9 @@ func (img *image) updateDst(dst string) {
 }
 
 func (ps pageSlice) Len() int           { return len(ps) }
-func (ps pageSlice) Less(i, j int) bool { return ps[i].src > ps[j].src }
 func (ps pageSlice) Swap(i, j int)      { ps[i], ps[j] = ps[j], ps[i] }
+func (ps pageSlice) Less(i, j int) bool { return ps[i].sortName > ps[j].sortName }
+
+func (is imageSlice) Len() int           { return len(is) }
+func (is imageSlice) Swap(i, j int)      { is[i], is[j] = is[j], is[i] }
+func (is imageSlice) Less(i, j int) bool { return is[i].sortName > is[j].sortName }
