@@ -17,9 +17,9 @@ type tmplAC struct {
 }
 
 type tmplDims struct {
-	L  tmplDim
-	M  tmplDim
-	S  tmplDim
+	LG tmplDim
+	MD tmplDim
+	SM tmplDim
 	XS tmplDim
 }
 
@@ -77,9 +77,9 @@ func (ac *tmplAC) AllImgs() []string {
 
 func (ac *tmplAC) Dims(lw, lh, mw, mh, sw, sh, xsw, xsh int) tmplDims {
 	return tmplDims{
-		L:  tmplDim{lw, lh},
-		M:  tmplDim{mw, mh},
-		S:  tmplDim{sw, sh},
+		LG: tmplDim{lw, lh},
+		MD: tmplDim{mw, mh},
+		SM: tmplDim{sw, sh},
 		XS: tmplDim{xsw, xsh},
 	}
 }

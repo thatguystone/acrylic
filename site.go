@@ -813,6 +813,8 @@ func (s *site) loadImg(file string, info os.FileInfo, isContent bool) {
 			s.errs.add(file, err)
 			return
 		}
+	} else if strings.HasPrefix(file, s.cfg.ContentDir) {
+		fWrite(metaFile, []byte("---\ntitle: \n---\n"))
 	}
 
 	title := ""
@@ -1052,7 +1054,15 @@ func (imgs *images) get(path string) *image {
 	return imgs.imgs[path]
 }
 
+func (img *image) IsGif() bool {
+	return img != nil && filepath.Ext(img.src) == ".gif"
+}
+
 func (img *image) Scale(w, h int, crop bool, quality int) string {
+	if img == nil {
+		return "<IMAGE NOT FOUND>"
+	}
+
 	if quality == 0 {
 		quality = 100
 	}
