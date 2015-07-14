@@ -55,6 +55,13 @@ func testNew(tb testing.TB, cfgs []string, files ...testFile) *test {
 
 	os.RemoveAll(tt.root)
 
+	defCfg := testFile{
+		p:  "__defcfg.yml",
+		sc: "cachebust: false\n",
+	}
+
+	files = append([]testFile{defCfg}, files...)
+
 	for _, f := range files {
 		p := filepath.Join(tt.root, f.p)
 
@@ -68,6 +75,7 @@ func testNew(tb testing.TB, cfgs []string, files ...testFile) *test {
 		tt.a.MustNotError(err)
 	}
 
+	cfgs = append([]string{files[0].p}, cfgs...)
 	for i, cfg := range cfgs {
 		cfgs[i] = filepath.Join(tt.root, cfg)
 	}

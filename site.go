@@ -1146,7 +1146,11 @@ func (img *image) Scale(w, h int, crop bool, quality int) string {
 }
 
 func (img *image) cacheBustedURL(url string) string {
-	return url + fmt.Sprintf("?%d", img.info.ModTime().Unix())
+	if !img.s.cfg.CacheBust {
+		return url
+	}
+
+	return fmt.Sprintf("%s?%d", url, img.info.ModTime().Unix())
 }
 
 func (img *image) copy() {

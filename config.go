@@ -35,6 +35,9 @@ type config struct {
 	// Args to run a JS compiler
 	JSCompiler []string
 
+	// If assets should be cache-busted
+	CacheBust bool
+
 	// For debugging
 	Debug     bool
 	DebugAddr string
@@ -72,6 +75,7 @@ func newConfig() *config {
 		TemplatesDir: "templates/",
 		PerPage:      5,
 		SassCompiler: sassCmd,
+		CacheBust:    true,
 		DebugAddr:    ":8000",
 	}
 }
