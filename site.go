@@ -453,7 +453,11 @@ func (s *site) processCSSAssets(path string) {
 		}
 
 		final := img.Scale(w, h, crop, quality)
-		sheet = bytes.Replace(sheet, []byte(absURL), []byte(final), -1)
+		sheet = bytes.Replace(
+			sheet,
+			match[0],
+			[]byte(fmt.Sprintf(`url("%s")`, final)),
+			-1)
 	}
 
 	err = ioutil.WriteFile(path, sheet, 0640)
