@@ -113,7 +113,6 @@ var (
 
 	reCSSURL    = regexp.MustCompile(`url\("?(.*?)"?\)`)
 	reCSSScaled = regexp.MustCompile(`.*(\.((\d*)x(\d*)(c?)(-q(\d*))?)).*`)
-	reCSSDims   = regexp.MustCompile(`\d*x\d*`)
 )
 
 func (s *site) build() (ok bool) {
