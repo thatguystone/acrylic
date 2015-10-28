@@ -921,11 +921,13 @@ func (s *site) parseName(name string) (time.Time, string) {
 }
 
 func newSiteState(s *site) *siteState {
+	tmplDir := filepath.Join(s.baseDir, s.cfg.TemplatesDir)
+
 	ss := &siteState{
 		min: minify.New(),
 		tmplSet: pongo2.NewSet(
 			"acrylic",
-			newTmplLoader(filepath.Join(s.baseDir, s.cfg.TemplatesDir))),
+			pongo2.MustNewLocalFileSystemLoader(tmplDir)),
 		buildTime: time.Now(),
 		data:      map[string]interface{}{},
 		pages: pages{

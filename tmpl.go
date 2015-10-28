@@ -3,18 +3,12 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/flosch/pongo2"
 	"github.com/russross/blackfriday"
 )
-
-type tmplLoader struct {
-	base string
-}
 
 type tmplAC struct {
 	s  *site
@@ -34,20 +28,6 @@ type tmplDim struct {
 
 func init() {
 	pongo2.RegisterFilter("markdown", filterMarkdown)
-}
-
-func newTmplLoader(base string) pongo2.TemplateLoader {
-	return tmplLoader{
-		base: base,
-	}
-}
-
-func (l tmplLoader) Abs(base, name string) string {
-	return filepath.Join(l.base, base, name)
-}
-
-func (l tmplLoader) Get(path string) (io.Reader, error) {
-	return os.Open(path)
 }
 
 func newTmplAC(s *site, pg *page) *tmplAC {

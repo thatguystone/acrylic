@@ -56,6 +56,10 @@ func newTest(tb testing.TB, cfgs []string, files ...testFile) *check.C {
 
 	files = append([]testFile{defCfg}, files...)
 
+	files = append(files, testFile{
+		p: "templates/--stop-the-panics.html",
+	})
+
 	for _, f := range files {
 		if len(f.sc) > 0 {
 			c.FS.SWriteFile(f.p, f.sc)
@@ -168,6 +172,38 @@ func TestBasic(t *testing.T) {
 	c.FS.SContentsEqual("public/blog/2015/01/05/post0/index.html", "1234")
 	c.FS.SContentsEqual("public/blog/2015/01/07/post1/index.html",
 		"/blog/2015/01/07/post1/test.5x-q90.png\n/blog/2015/01/07/post1/test.png")
+}
+
+func TestTemplateLoader(t *testing.T) {
+	c := newTest(t, []string{"conf.yml"},
+		testFile{
+			p:  "conf.yml",
+			sc: "debug: true\n",
+		},
+		testFile{
+			p:  "content/blog/2015-01-07-post0/index.html",
+			sc: `{% extends "post.html" %} {% block post %}content{% endblock %}`,
+		},
+		testFile{
+			p:  "content/blog/2015-01-07-post1/index.html",
+			sc: `{% extends "sub/post.html" %} {% block post %}content{% endblock %}`,
+		},
+		testFile{
+			p:  "templates/base.html",
+			sc: `{% block content %}{% endblock %}`,
+		},
+		testFile{
+			p:  "templates/post.html",
+			sc: `{% extends "base.html" %}{% block content %}>{% block post %}{% endblock %}<{% endblock %}`,
+		},
+		testFile{
+			p:  "templates/sub/post.html",
+			sc: `{% extends "post.html" %}`,
+		},
+	)
+
+	c.FS.SContentsEqual("public/blog/2015/01/07/post0/index.html", ">content<")
+	c.FS.SContentsEqual("public/blog/2015/01/07/post1/index.html", ">content<")
 }
 
 func TestMoreScissors(t *testing.T) {
