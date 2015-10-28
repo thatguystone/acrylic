@@ -170,6 +170,30 @@ func TestBasic(t *testing.T) {
 		"/blog/2015/01/07/post1/test.5x-q90.png\n/blog/2015/01/07/post1/test.png")
 }
 
+func TestMoreScissors(t *testing.T) {
+	c := newTest(t, []string{"conf.yml"},
+		testFile{
+			p:  "conf.yml",
+			sc: "debug: true\n",
+		},
+		testFile{
+			p: "content/blog/index.html",
+			sc: "---\nlist_page: true\n---\n" +
+				`|{% for p in pages %} {{ p.Title }} - {{ p.Summary }} |{% endfor %}`,
+		},
+		testFile{
+			p:  "content/blog/2015-01-07-post1/index.html",
+			sc: `{% extends "post.html" %} {% block post %}a summary<!--more-->more content{% endblock %}`,
+		},
+		testFile{
+			p:  "templates/post.html",
+			sc: `<!-- >8 acrylic-content -->{% block post %}{% endblock %}<!-- acrylic-content 8< -->`,
+		},
+	)
+
+	c.FS.SContentsEqual("public/blog/index.html", "| Post1 - a summary |")
+}
+
 func TestPublish(t *testing.T) {
 	c := newTest(t, []string{"conf.yml"},
 		testFile{
@@ -200,7 +224,6 @@ func TestPublish(t *testing.T) {
 }
 
 func TestAssetTagsDebug(t *testing.T) {
-
 	c := newTest(t, []string{"conf.yml"},
 		testFile{
 			p: "conf.yml",
@@ -228,7 +251,6 @@ func TestAssetTagsDebug(t *testing.T) {
 }
 
 func TestAssetTagsPublish(t *testing.T) {
-
 	c := newTest(t, []string{"conf.yml"},
 		testFile{
 			p: "conf.yml",

@@ -102,9 +102,9 @@ type blob struct {
 }
 
 const (
-	scissors     = `<!-- >8 stas-content -->`
-	scissorsEnd  = `<!-- stas-content 8< -->`
-	moreScissors = `<!-- >8 more -->`
+	scissors     = `<!-- >8 acrylic-content -->`
+	scissorsEnd  = `<!-- acrylic-content 8< -->`
+	moreScissors = `<!--more-->`
 )
 
 var (
@@ -922,8 +922,10 @@ func (s *site) parseName(name string) (time.Time, string) {
 
 func newSiteState(s *site) *siteState {
 	ss := &siteState{
-		min:       minify.New(),
-		tmplSet:   pongo2.NewSet("acrylic"),
+		min: minify.New(),
+		tmplSet: pongo2.NewSet(
+			"acrylic",
+			newTmplLoader(filepath.Join(s.baseDir, s.cfg.TemplatesDir))),
 		buildTime: time.Now(),
 		data:      map[string]interface{}{},
 		pages: pages{
@@ -940,7 +942,6 @@ func newSiteState(s *site) *siteState {
 	ss.min.AddFunc("text/html", min_html.Minify)
 	ss.min.AddFunc("text/javascript", min_js.Minify)
 
-	ss.tmplSet.SetBaseDirectory(filepath.Join(s.baseDir, s.cfg.TemplatesDir))
 	ss.tmplSet.Globals.Update(pongo2.Context{
 		"cfg":  s.cfg,
 		"data": ss.data,
