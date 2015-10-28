@@ -3,27 +3,25 @@ package main
 import (
 	"testing"
 
-	"github.com/thatguystone/assert"
+	"github.com/thatguystone/cog/check"
 )
 
 func TestFSChangeExt(t *testing.T) {
-	t.Parallel()
-	a := assert.From(t)
+	c := check.New(t)
 
-	a.Equal("file.ext", fChangeExt("file.test", "ext"))
-	a.Equal("file.ext", fChangeExt("file.test", ".ext"))
-	a.Equal("file..ext", fChangeExt("file.test", "..ext"))
-	a.Equal("file", fChangeExt("file.test", ""))
+	c.Equal("file.ext", fChangeExt("file.test", "ext"))
+	c.Equal("file.ext", fChangeExt("file.test", ".ext"))
+	c.Equal("file..ext", fChangeExt("file.test", "..ext"))
+	c.Equal("file", fChangeExt("file.test", ""))
 }
 
 func TestFSDropRoot(t *testing.T) {
-	t.Parallel()
-	a := assert.From(t)
+	c := check.New(t)
 
 	in := "/some/root/test/another"
 	out := "test/another"
 
-	a.Equal(out, fDropRoot("/some", "root", in))
-	a.Equal(out, fDropRoot("/some", "root/", in))
-	a.Equal(in, fDropRoot("/some", "not/root/", in))
+	c.Equal(out, fDropRoot("/some", "root", in))
+	c.Equal(out, fDropRoot("/some", "root/", in))
+	c.Equal(in, fDropRoot("/some", "not/root/", in))
 }

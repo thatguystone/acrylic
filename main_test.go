@@ -2,18 +2,13 @@ package main
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/thatguystone/assert"
+	"github.com/thatguystone/cog/cfs"
+	"github.com/thatguystone/cog/check"
 )
-
-type test struct {
-	a    assert.A
-	root string
-}
 
 type testFile struct {
 	p  string
@@ -47,13 +42,12 @@ var (
 	}
 )
 
-func testNew(tb testing.TB, cfgs []string, files ...testFile) *test {
-	tt := test{
-		a:    assert.From(tb),
-		root: filepath.Join("test_data", assert.GetTestName()),
-	}
+func TestMain(m *testing.M) {
+	check.Main(m)
+}
 
-	os.RemoveAll(tt.root)
+func newTest(tb testing.TB, cfgs []string, files ...testFile) *check.C {
+	c := check.New(tb)
 
 	defCfg := testFile{
 		p:  "__defcfg.yml",
@@ -63,60 +57,42 @@ func testNew(tb testing.TB, cfgs []string, files ...testFile) *test {
 	files = append([]testFile{defCfg}, files...)
 
 	for _, f := range files {
-		p := filepath.Join(tt.root, f.p)
-
-		var err error
 		if len(f.sc) > 0 {
-			err = fWrite(p, []byte(f.sc))
+			c.FS.SWriteFile(f.p, f.sc)
 		} else {
-			err = fWrite(p, f.bc)
+			c.FS.WriteFile(f.p, f.bc)
 		}
-
-		tt.a.MustNotError(err)
 	}
 
 	cfgs = append([]string{files[0].p}, cfgs...)
 	for i, cfg := range cfgs {
-		cfgs[i] = filepath.Join(tt.root, cfg)
+		cfgs[i] = c.FS.Path(cfg)
 	}
 
 	b := bytes.Buffer{}
-	run(cfgs, tt.root, &b, true)
+	run(cfgs, c.FS.Path(""), &b, true)
 	if b.Len() > 0 {
-		tb.Log(b.String())
-		tb.FailNow()
+		c.Log(b.String())
+		c.FailNow()
 	}
 
-	tt.a.Logf("Generated files:\n%s", tt.tree(tt.root, "public/"))
+	c.Logf("Generated files:\n%s", tree(c))
 
-	return &tt
+	return c
 }
 
-func (t *test) cleanup() {
-	os.RemoveAll(t.root)
-}
+func tree(c *check.C) string {
+	root := c.FS.Path("")
 
-func (t *test) finalPath(path string) string {
-	return filepath.Join(t.root, path)
-}
-
-func (t *test) contents(path, c string) {
-	fc, err := ioutil.ReadFile(t.finalPath(path))
-	t.a.MustNotError(err)
-
-	t.a.Equal(c, string(fc), "content mismatch for %s", path)
-}
-
-func (t *test) tree(root, dir string) string {
-	root = filepath.Join(root, dir)
-
-	if !dExists(root) {
+	exists, err := cfs.DirExists(root)
+	c.MustNotError(err)
+	if !exists {
 		return ""
 	}
 
 	b := bytes.Buffer{}
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
 		}
@@ -125,14 +101,13 @@ func (t *test) tree(root, dir string) string {
 		return nil
 	})
 
-	t.a.MustNotError(err, "failed to walk %s", root)
+	c.MustNotError(err, "failed to walk %s", root)
 
 	return b.String()
 }
 
 func TestBasic(t *testing.T) {
-	t.Parallel()
-	tt := testNew(t, []string{"conf.yml"},
+	c := newTest(t, []string{"conf.yml"},
 		testFile{
 			p: "conf.yml",
 			sc: "debug: true\n" +
@@ -184,21 +159,19 @@ func TestBasic(t *testing.T) {
 			sc: `{% block header %}HEADER{% endblock %} {% block content %}WRONG{% endblock %}`,
 		},
 	)
-	defer tt.cleanup()
 
-	tt.contents("public/index.html", "HEADER test")
-	tt.contents("public/robots.txt", "robots!")
-	tt.contents("public/assets/js/one.js", "function() {};")
-	tt.contents("public/assets/css/one.css", "body {\n  background: #000; }\n")
-	tt.contents("public/blog/index.html", "| Post1 | Post0 |")
-	tt.contents("public/blog/2015/01/05/post0/index.html", "1234")
-	tt.contents("public/blog/2015/01/07/post1/index.html",
+	c.FS.SContentsEqual("public/index.html", "HEADER test")
+	c.FS.SContentsEqual("public/robots.txt", "robots!")
+	c.FS.SContentsEqual("public/assets/js/one.js", "function() {};")
+	c.FS.SContentsEqual("public/assets/css/one.css", "body {\n  background: #000; }\n")
+	c.FS.SContentsEqual("public/blog/index.html", "| Post1 | Post0 |")
+	c.FS.SContentsEqual("public/blog/2015/01/05/post0/index.html", "1234")
+	c.FS.SContentsEqual("public/blog/2015/01/07/post1/index.html",
 		"/blog/2015/01/07/post1/test.5x-q90.png\n/blog/2015/01/07/post1/test.png")
 }
 
 func TestPublish(t *testing.T) {
-	t.Parallel()
-	tt := testNew(t, []string{"conf.yml"},
+	c := newTest(t, []string{"conf.yml"},
 		testFile{
 			p: "conf.yml",
 			sc: "debug: false\n" +
@@ -220,17 +193,15 @@ func TestPublish(t *testing.T) {
 			sc: `body { background: #000; }`,
 		},
 	)
-	defer tt.cleanup()
 
-	tt.contents("public/index.html", "test")
-	tt.contents("public/assets/all.js", `function(test){;}("abced");`)
-	tt.contents("public/assets/all.css", "body{background:#000}")
+	c.FS.SContentsEqual("public/index.html", "test")
+	c.FS.SContentsEqual("public/assets/all.js", `function(test){;}("abced");`)
+	c.FS.SContentsEqual("public/assets/all.css", "body{background:#000}")
 }
 
 func TestAssetTagsDebug(t *testing.T) {
-	t.Parallel()
 
-	tt := testNew(t, []string{"conf.yml"},
+	c := newTest(t, []string{"conf.yml"},
 		testFile{
 			p: "conf.yml",
 			sc: "debug: true\n" +
@@ -251,16 +222,14 @@ func TestAssetTagsDebug(t *testing.T) {
 			sc: `body { background: #000; }`,
 		},
 	)
-	defer tt.cleanup()
 
-	tt.contents("public/index.html",
+	c.FS.SContentsEqual("public/index.html",
 		`<script type="text/javascript" src="/assets/js/one.js"></script><link rel="stylesheet" href="/assets/css/one.css" />`)
 }
 
 func TestAssetTagsPublish(t *testing.T) {
-	t.Parallel()
 
-	tt := testNew(t, []string{"conf.yml"},
+	c := newTest(t, []string{"conf.yml"},
 		testFile{
 			p: "conf.yml",
 			sc: "debug: false\n" +
@@ -281,15 +250,13 @@ func TestAssetTagsPublish(t *testing.T) {
 			sc: `body { background: #000; }`,
 		},
 	)
-	defer tt.cleanup()
 
-	tt.contents("public/index.html",
+	c.FS.SContentsEqual("public/index.html",
 		`<script src=/assets/all.js></script><link rel=stylesheet href=/assets/all.css>`)
 }
 
 func TestCSSAssets(t *testing.T) {
-	t.Parallel()
-	tt := testNew(t, []string{"conf.yml"},
+	c := newTest(t, []string{"conf.yml"},
 		testFile{
 			p: "conf.yml",
 			sc: "debug: true\n" +
@@ -309,23 +276,20 @@ func TestCSSAssets(t *testing.T) {
 				`.test { background: url("/assets/img/test.4x2c-q90.png"); }`,
 		},
 	)
-	defer tt.cleanup()
 
-	tt.a.True(fExists(tt.finalPath("public/assets/img/test.png")))
-	tt.a.True(fExists(tt.finalPath("public/assets/img/test.4x.png")))
-	tt.a.True(fExists(tt.finalPath("public/assets/img/test.4x2.png")))
-	tt.a.True(fExists(tt.finalPath("public/assets/img/test.4x2-q81.png")))
-	tt.a.True(fExists(tt.finalPath("public/assets/img/test.4x2c-q90.png")))
+	c.FS.FileExists("public/assets/img/test.png")
+	c.FS.FileExists("public/assets/img/test.4x.png")
+	c.FS.FileExists("public/assets/img/test.4x2.png")
+	c.FS.FileExists("public/assets/img/test.4x2-q81.png")
+	c.FS.FileExists("public/assets/img/test.4x2c-q90.png")
 }
 
 func TestPublicCleanup(t *testing.T) {
-	t.Parallel()
-	tt := testNew(t, nil,
+	c := newTest(t, nil,
 		testFile{p: "public/test.html"},
 		testFile{p: "public/nope.html"},
 	)
-	defer tt.cleanup()
 
-	tt.a.False(fExists(tt.finalPath("public/test.html")))
-	tt.a.False(fExists(tt.finalPath("public/nope.html")))
+	c.FS.FileNotExists("public/test.html")
+	c.FS.FileNotExists("public/nope.html")
 }
