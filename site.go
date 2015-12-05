@@ -41,7 +41,7 @@ type site struct {
 }
 
 type siteState struct {
-	min       *minify.Minify
+	min       *minify.M
 	tmplSet   *pongo2.TemplateSet
 	buildTime time.Time
 
