@@ -862,7 +862,7 @@ func (s *site) getOutInfo(file, dir string, isPage bool) (
 	name = fDropRoot(s.baseDir, dir, file)
 
 	if strings.Count(name, "/") == 0 {
-		url = filepath.Clean(name)
+		url = "/" + filepath.Clean(name)
 		dst = filepath.Join(s.baseDir, s.cfg.PublicDir, name)
 		return
 	}
