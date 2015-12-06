@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/flosch/pongo2"
 	"github.com/russross/blackfriday"
@@ -47,8 +46,10 @@ func (ac *tmplAC) Data(file string) interface{} {
 
 func (ac *tmplAC) Img(src string) *image {
 	path := src
-	if !strings.HasPrefix(src, ac.s.cfg.ContentDir) {
+	if !filepath.IsAbs(src) {
 		path = filepath.Join(ac.pg.src, "../", src)
+	} else {
+		path = filepath.Join(ac.s.cfg.ContentDir, src)
 	}
 
 	img := ac.s.ss.imgs.get(path)
@@ -67,7 +68,8 @@ func (ac *tmplAC) AllImgs() []string {
 
 	for _, img := range ac.s.ss.imgs.all {
 		if img.inGallery {
-			ret = append(ret, img.src)
+			abs := "/" + fDropRoot("", ac.s.cfg.ContentDir, img.src)
+			ret = append(ret, abs)
 		}
 	}
 
