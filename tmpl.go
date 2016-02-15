@@ -7,10 +7,12 @@ import (
 
 	"github.com/flosch/pongo2"
 	"github.com/russross/blackfriday"
+	"github.com/thatguystone/acrylic/internal/afs"
+	"github.com/thatguystone/cog/cfs"
 )
 
-type tmplAC struct {
-	s  *site
+type tmplVars struct {
+	ss *siteState
 	pg *page
 }
 
@@ -29,33 +31,33 @@ func init() {
 	pongo2.RegisterFilter("markdown", filterMarkdown)
 }
 
-func newTmplAC(s *site, pg *page) *tmplAC {
-	return &tmplAC{
-		s:  s,
+func newTmplVars(ss *siteState, pg *page) *tmplVars {
+	return &tmplVars{
+		ss: ss,
 		pg: pg,
 	}
 }
 
-func (ac *tmplAC) Cfg() *config {
-	return ac.s.cfg
+func (ac *tmplVars) Cfg() *config {
+	return ac.ss.cfg
 }
 
-func (ac *tmplAC) Data(file string) interface{} {
-	return ac.s.ss.data[file]
+func (ac *tmplVars) Data(file string) interface{} {
+	return ac.ss.data[file]
 }
 
-func (ac *tmplAC) Img(src string) *image {
+func (ac *tmplVars) Img(src string) *image {
 	path := src
 	if !filepath.IsAbs(src) {
 		path = filepath.Join(ac.pg.src, "../", src)
 	} else {
-		path = filepath.Join(ac.s.cfg.ContentDir, src)
+		path = filepath.Join(ac.ss.cfg.ContentDir, src)
 	}
 
-	img := ac.s.ss.imgs.get(path)
+	img := ac.ss.imgs.get(path)
 
 	if img == nil {
-		ac.s.errs.add(ac.pg.src,
+		ac.ss.errs.add(ac.pg.src,
 			fmt.Errorf("image not found: %s (resolved to %s)", src, path))
 		return nil
 	}
@@ -63,12 +65,12 @@ func (ac *tmplAC) Img(src string) *image {
 	return img
 }
 
-func (ac *tmplAC) AllImgs() []string {
+func (ac *tmplVars) AllImgs() []string {
 	var ret []string
 
-	for _, img := range ac.s.ss.imgs.all {
+	for _, img := range ac.ss.imgs.all {
 		if img.inGallery {
-			abs := "/" + fDropRoot("", ac.s.cfg.ContentDir, img.src)
+			abs := "/" + afs.DropRoot("", ac.ss.cfg.ContentDir, img.src)
 			ret = append(ret, abs)
 		}
 	}
@@ -76,7 +78,7 @@ func (ac *tmplAC) AllImgs() []string {
 	return ret
 }
 
-func (ac *tmplAC) Dims(lw, lh, mw, mh, sw, sh, xsw, xsh int) tmplDims {
+func (ac *tmplVars) Dims(lw, lh, mw, mh, sw, sh, xsw, xsh int) tmplDims {
 	return tmplDims{
 		LG: tmplDim{lw, lh},
 		MD: tmplDim{mw, mh},
@@ -85,50 +87,50 @@ func (ac *tmplAC) Dims(lw, lh, mw, mh, sw, sh, xsw, xsh int) tmplDims {
 	}
 }
 
-func (ac *tmplAC) JSTags() *pongo2.Value {
+func (ac *tmplVars) JSTags() *pongo2.Value {
 	b := bytes.Buffer{}
 
-	if !ac.s.cfg.Debug {
+	if !ac.ss.cfg.Debug {
 		fmt.Fprintf(&b,
 			`<script type="text/javascript" src="/%s"></script>`,
 			ac.cacheBustAsset("all.js"))
 	} else {
-		for _, js := range ac.s.cfg.JS {
+		for _, js := range ac.ss.cfg.JS {
 			fmt.Fprintf(&b,
 				`<script type="text/javascript" src="/%s"></script>`,
-				filepath.Join(ac.s.cfg.AssetsDir, js))
+				filepath.Join(ac.ss.cfg.AssetsDir, js))
 		}
 	}
 
 	return pongo2.AsSafeValue(b.String())
 }
 
-func (ac *tmplAC) CSSTags() *pongo2.Value {
+func (ac *tmplVars) CSSTags() *pongo2.Value {
 	b := bytes.Buffer{}
 
-	if !ac.s.cfg.Debug {
+	if !ac.ss.cfg.Debug {
 		fmt.Fprintf(&b,
 			`<link rel="stylesheet" href="/%s" />`,
 			ac.cacheBustAsset("all.css"))
 	} else {
-		for _, css := range ac.s.cfg.CSS {
+		for _, css := range ac.ss.cfg.CSS {
 			fmt.Fprintf(&b,
 				`<link rel="stylesheet" href="/%s" />`,
-				filepath.Join(ac.s.cfg.AssetsDir, fChangeExt(css, ".css")))
+				filepath.Join(ac.ss.cfg.AssetsDir, cfs.ChangeExt(css, ".css")))
 		}
 	}
 
 	return pongo2.AsSafeValue(b.String())
 }
 
-func (ac *tmplAC) cacheBustAsset(path string) string {
-	path = filepath.Join(ac.s.cfg.AssetsDir, path)
+func (ac *tmplVars) cacheBustAsset(path string) string {
+	path = filepath.Join(ac.ss.cfg.AssetsDir, path)
 
-	if !ac.s.cfg.CacheBust {
+	if !ac.ss.cfg.CacheBust {
 		return path
 	}
 
-	return fmt.Sprintf("%s?%d", path, ac.s.ss.buildTime.Unix())
+	return fmt.Sprintf("%s?%d", path, ac.ss.buildTime.Unix())
 }
 
 func filterMarkdown(in *pongo2.Value, param *pongo2.Value) (

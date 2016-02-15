@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/thatguystone/acrylic/internal/afs"
 	"github.com/thatguystone/cog/cfs"
 	"github.com/thatguystone/cog/check"
 )
@@ -101,7 +102,7 @@ func tree(c *check.C) string {
 			return err
 		}
 
-		b.WriteString("\t" + fDropRoot(root, "", path) + "\n")
+		b.WriteString("\t" + afs.DropRoot(root, "", path) + "\n")
 		return nil
 	})
 

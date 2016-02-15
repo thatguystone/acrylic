@@ -1,4 +1,4 @@
-package main
+package strs
 
 import (
 	"strings"
@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	sDateFormat = "2006-01-02"
+	// DateFormat is the date format used everywhere
+	DateFormat = "2006-01-02"
 )
 
 var (
@@ -32,16 +33,18 @@ func titleSpaceChar(r rune) bool {
 		r == '_'
 }
 
-func sToDate(title string) (time.Time, bool) {
-	if len(title) > len(sDateFormat) {
-		title = title[:len(sDateFormat)]
+// ToDate parses the date out of a post's filename
+func ToDate(title string) (time.Time, bool) {
+	if len(title) > len(DateFormat) {
+		title = title[:len(DateFormat)]
 	}
 
-	t, err := time.ParseInLocation(sDateFormat, title, time.Local)
+	t, err := time.ParseInLocation(DateFormat, title, time.Local)
 	return t, err == nil
 }
 
-func sToTitle(title string) string {
+// ToTitle turns a post's filename into a post title
+func ToTitle(title string) string {
 	parts := strings.FieldsFunc(title, titleSpaceChar)
 
 	for i, part := range parts {
