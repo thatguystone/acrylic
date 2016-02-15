@@ -1,14 +1,14 @@
 language: go
 
 go:
-    - 1.4.3
-    - 1.5.1
+  - 1.4.3
+  - 1.5.1
 
 git:
-    submodules: false
+  submodules: false
 
 sudo: true
 
 before_install:
-    - sudo apt-get update -qq
-    - sudo apt-get install -y ruby-sass
+  - sudo apt-get update -qq
+  - sudo apt-get install -y ruby-sass
