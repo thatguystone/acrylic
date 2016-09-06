@@ -1,17 +1,12 @@
 package main
 
 import (
-	"fmt"
-	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"time"
-
-	"gopkg.in/yaml.v2"
 )
 
 func init() {
@@ -19,30 +14,20 @@ func init() {
 }
 
 func main() {
-	for run(os.Args[1:], ".", os.Stderr, false) {
+	for run(os.Args[1:], ".", false) {
 	}
 }
 
-func run(args []string, baseDir string, logOut io.Writer, testing bool) bool {
-	cfg := newConfig()
-
-	for _, arg := range args {
-		b, err := ioutil.ReadFile(arg)
-		if err != nil {
-			panic(fmt.Errorf("failed to read config file: %v", err))
-		}
-
-		err = yaml.Unmarshal(b, cfg)
-		if err != nil {
-			panic(fmt.Errorf("failed to parse %s: %v", arg, err))
-		}
-	}
+func run(args []string, baseDir string, testing bool) bool {
+	cfg := config.NewC()
+	err := cfg.Load(args...)
+	err.Must(err)
 
 	build := func() bool {
 		s := site{
 			args:    args,
 			cfg:     cfg,
-			logOut:  logOut,
+			log:     log,
 			baseDir: baseDir,
 		}
 
@@ -50,7 +35,7 @@ func run(args []string, baseDir string, logOut io.Writer, testing bool) bool {
 	}
 
 	if cfg.Debug && !testing {
-		buildWatchAndServe(build, cfg, args, baseDir)
+		buildWatchAndServe(build, cfg, log, args, baseDir)
 		return true
 	}
 
@@ -92,7 +77,7 @@ func buildWatchAndServe(
 		}
 	}()
 
-	fmt.Printf("Serving on %s ...\n", cfg.DebugAddr)
+	log.Printlin("Serving on %s ...\n", cfg.DebugAddr)
 
 	fnot := newFnotify()
 	defer fnot.close()
@@ -123,7 +108,7 @@ func buildWatchAndServe(
 			timer.Reset(50 * time.Millisecond)
 
 		case <-timer.C:
-			fmt.Println("Change detected, rebuilding...")
+			log.Println("Change detected, rebuilding...")
 			build()
 		}
 	}

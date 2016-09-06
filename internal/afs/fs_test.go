@@ -52,10 +52,28 @@ func TestDropFirst(t *testing.T) {
 func TestDropRoot(t *testing.T) {
 	c := check.New(t)
 
-	in := "/some/root/test/another"
-	out := "test/another"
+	tests := []struct {
+		root, path string
+		out        string
+	}{
+		{
+			root: "root/path/",
+			path: "root/path//some/file/",
+			out:  "some/file",
+		},
+		{
+			root: "root/path",
+			path: "some/file",
+			out:  "some/file",
+		},
+		{
+			root: "",
+			path: "some/file",
+			out:  "some/file",
+		},
+	}
 
-	c.Equal(out, DropRoot("/some", "root", in))
-	c.Equal(out, DropRoot("/some", "root/", in))
-	c.Equal(in, DropRoot("/some", "not/root/", in))
+	for _, test := range tests {
+		c.Equal(DropRoot(test.root, test.path), test.out)
+	}
 }

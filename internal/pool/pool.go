@@ -16,10 +16,12 @@ type Runner struct {
 // callback with the pool.
 //
 // If wait is true, this waits for all jobs to finish before returning.
-func Pool(cb func(*Runner)) {
-	r := NewRunner(runtime.GOMAXPROCS(-1))
-	cb(r)
-	r.Wait()
+func Pool(r **Runner, cb func()) {
+	tr := NewRunner(runtime.GOMAXPROCS(-1))
+	*r = tr
+	cb()
+	tr.Wait()
+	*r = nil
 }
 
 // NewRunner creates a new Runner

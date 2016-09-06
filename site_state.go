@@ -1,16 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/flosch/pongo2"
 	"github.com/tdewolff/minify"
-	min_css "github.com/tdewolff/minify/css"
-	min_html "github.com/tdewolff/minify/html"
-	min_js "github.com/tdewolff/minify/js"
 	"github.com/thatguystone/acrylic/internal/pool"
 )
 
@@ -20,6 +16,7 @@ type siteState struct {
 	min       *minify.M
 	tmplSet   *pongo2.TemplateSet
 	buildTime time.Time
+	ok        bool
 
 	pool *pool.Runner // Templates can require extra work, so this must be global
 
@@ -38,11 +35,11 @@ func newSiteState(s *site) *siteState {
 
 	ss := &siteState{
 		site: s,
-		min:  minify.New(),
 		tmplSet: pongo2.NewSet(
 			"acrylic",
 			pongo2.MustNewLocalFileSystemLoader(tmplDir)),
 		buildTime: time.Now(),
+		ok:        true,
 		data:      map[string]interface{}{},
 		pages: pages{
 			byCat: map[string][]*page{},
@@ -53,10 +50,6 @@ func newSiteState(s *site) *siteState {
 		},
 		unused: newUnused(),
 	}
-
-	ss.min.AddFunc("text/css", min_css.Minify)
-	ss.min.AddFunc("text/html", min_html.Minify)
-	ss.min.AddFunc("text/javascript", min_js.Minify)
 
 	ss.tmplSet.Globals.Update(pongo2.Context{
 		"cfg":  s.cfg,
@@ -74,7 +67,7 @@ func (ss *siteState) build() (ok bool) {
 		ss.walk(ss.cfg.PublicDir, ss.loadPublic)
 	})
 
-	if !ss.checkErrs() {
+	if !ss.ok {
 		return
 	}
 
@@ -86,7 +79,7 @@ func (ss *siteState) build() (ok bool) {
 		ss.copyBlobs()
 	})
 
-	if !ss.checkErrs() {
+	if !ss.ok {
 		return
 	}
 
@@ -94,7 +87,7 @@ func (ss *siteState) build() (ok bool) {
 		ss.renderListPages()
 	})
 
-	if !ss.checkErrs() {
+	if !ss.ok {
 		return
 	}
 
@@ -112,16 +105,9 @@ func (ss *siteState) runPool(cb func()) {
 	ss.pool = nil
 }
 
-func (ss *siteState) checkErrs() bool {
-	errs := ss.errs.String()
-
-	if len(errs) == 0 {
-		return true
-	}
-
-	fmt.Fprintf(ss.logOut, errs)
-
-	return false
+func (ss *siteState) errorf(format string, args ...interface{}) {
+	ss.ok = false
+	ss.log.Errorf(format, args...)
 }
 
 func (ss *siteState) markUsed(dst string) {

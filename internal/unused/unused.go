@@ -1,29 +1,40 @@
-package main
+package unused
 
 import (
 	"os"
 	"sort"
+	"sync"
 )
 
-type unused struct {
+// Unused tracks unused files
+type U struct {
+	mtx   sync.Mutex
 	files map[string]struct{}
 }
 
-func newUnused() *unused {
-	return &unused{
+// New creates a new unused file track
+func New() *U {
+	return &U{
 		files: map[string]struct{}{},
 	}
 }
 
-func (u *unused) add(path string) {
+// Add a potentially-unused file
+func (u *U) Add(path string) {
+	u.mtx.Lock()
 	u.files[path] = struct{}{}
+	u.mtx.Unlock()
 }
 
-func (u *unused) used(path string) {
+// Used marks a file as Used
+func (u *U) Used(path string) {
+	u.mtx.Lock()
 	delete(u.files, path)
+	u.mtx.Unlock()
 }
 
-func (u *unused) remove() {
+// Remove removes any files not marked as Used()
+func (u *U) Remove() {
 	paths := []string{}
 	for path := range u.files {
 		paths = append(paths, path)
