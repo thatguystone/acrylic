@@ -1,16 +1,48 @@
-package main
+package acrylic
 
-import "github.com/thatguystone/cog/clog"
+import (
+	"log"
+	"net/http"
+)
 
-type site struct {
-	args []string
-	cfg  *config
-	log  *clog.Logger
+// A Site contains configuration options used for a site
+type Site struct {
+	Handler     http.Handler // Handler to crawl
+	EntryPoints []string     // Entry points to crawl
+	Output      string       // Build directory
 }
 
-func (s *site) build() bool {
-NOTIFY OF ANY UNUSED CONTENT + ASSETS ONCE BUILD IS COMPLETE?
+// Serve the site on the given addr
+func (s *Site) Serve(addr string) {
+	log.Fatal(http.ListenAndServe(addr, s.Handler))
+}
 
-	ss := newSiteState(s)
-	return ss.build()
+// Run a debug proxy
+func (s *Site) Proxy(args ProxyArgs) {
+	p, err := newProxy(args)
+	if err == nil {
+		err = p.run()
+	}
+
+	log.Fatal(err)
+}
+
+func (s *Site) Build() {
+	s.build() // See: build.go
+}
+
+func (s *Site) Templates(root string) TemplateSet {
+	return templates(root)
+}
+
+func (s *Site) ImgHandler(root string) http.Handler {
+	return newImgHandler(s, root)
+}
+
+func (s *Site) ScssHandler(args ScssArgs) http.Handler {
+	return newScssHandler(args)
+}
+
+func (s *Site) WebpackHandler(asset string) http.Handler {
+	return newWebpackHandler(asset)
 }
