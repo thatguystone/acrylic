@@ -20,9 +20,7 @@ import (
 	"github.com/thatguystone/cog/stringc"
 )
 
-// Proxy runs a watching proxy server that rebuilds app any time a "*.go" file
-// changes in any watched dir. The proxy serves on proxyPort, forwarding to
-// appPort.
+// ProxyArgs collects the arguments to pass to Proxy().
 //
 // Since the proxy is meant for debugging, everything runs in debug mode.
 type ProxyArgs struct {
@@ -45,7 +43,7 @@ type proxy struct {
 
 	app struct {
 		url *url.URL
-		cmd *Cmd
+		cmd *cmd
 	}
 
 	webpack struct {
@@ -77,7 +75,6 @@ func newProxy(args ProxyArgs) (*proxy, error) {
 
 // Run runs the proxy until the program is terminated
 func (p *proxy) run() error {
-	setDebug()
 	defer notify.Stop(p.evCh)
 
 	for _, dir := range p.WatchDirs {
@@ -107,13 +104,13 @@ func (p *proxy) checkApp() error {
 
 	_, _, err = net.SplitHostPort(url.Host)
 	if err != nil {
-		return fmt.Errorf("AppURL is missing port")
+		return fmt.Errorf("`AppURL` is missing port")
 	}
 
 	p.app.url = url
 
 	base := filepath.Base(p.AppPath)
-	p.app.cmd = Command("./"+cfs.DropExt(base), p.AppArgs...)
+	p.app.cmd = command("./"+cfs.DropExt(base), p.AppArgs...)
 
 	return nil
 }
@@ -139,7 +136,7 @@ func (p *proxy) checkWebpack() error {
 
 func (p *proxy) runWatcher() {
 	// Be sure app is dead when exiting
-	defer p.app.cmd.Term()
+	defer p.app.cmd.term()
 
 	// Fire off build immediately
 	timer := time.NewTimer(0)
@@ -170,7 +167,7 @@ func (p *proxy) runWatcher() {
 		case <-cooldown.C:
 			buildPending = false
 
-		case err := <-p.app.cmd.Err:
+		case err := <-p.app.cmd.err:
 			if err == nil {
 				err = fmt.Errorf("app exited unexpectedly")
 			}
@@ -186,18 +183,18 @@ func (p *proxy) runWatcher() {
 }
 
 func (p *proxy) runWebpack() {
-	cmd := Command("./node_modules/.bin/webpack-dev-server",
+	cmd := command(nodeBin+"/webpack-dev-server",
 		"--host", p.webpack.host,
 		"--port", p.webpack.port)
-	cmd.Restart()
+	cmd.restart()
 
-	defer cmd.Term()
+	defer cmd.term()
 
 	for {
 		select {
-		case err := <-cmd.Err:
-			log.Println("E: webpack error: %v", err)
-			cmd.Restart()
+		case err := <-cmd.err:
+			log.Printf("E: webpack error: %v", err)
+			cmd.restart()
 
 		case <-p.close:
 			return
@@ -209,7 +206,7 @@ func (p *proxy) rebuild() {
 	log.Println("I: Rebuilding...")
 	defer log.Println("I: Rebuild complete")
 
-	p.app.cmd.Term()
+	p.app.cmd.term()
 
 	p.rwmtx.Lock()
 	defer p.rwmtx.Unlock()
@@ -226,7 +223,7 @@ func (p *proxy) rebuild() {
 		return
 	}
 
-	p.app.cmd.Restart()
+	p.app.cmd.restart()
 	giveUp := time.After(5 * time.Second)
 
 	for {
@@ -237,13 +234,13 @@ func (p *proxy) rebuild() {
 		}
 
 		select {
-		case err := <-p.app.cmd.Err:
-			p.app.cmd.Err <- err
+		case err := <-p.app.cmd.err:
+			p.app.cmd.err <- err
 			return
 
 		case <-giveUp:
-			p.app.cmd.Term()
-			p.app.cmd.Err <- fmt.Errorf("app did not come up in a timely manner")
+			p.app.cmd.term()
+			p.app.cmd.err <- fmt.Errorf("app did not come up in a timely manner")
 			return
 
 		case <-time.After(time.Millisecond):

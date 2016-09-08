@@ -47,9 +47,6 @@ func (h imgHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cache buster is useless to us
-	r.Form.Del(cacheBuster)
-
 	srcPath := filepath.Join(h.root, upath)
 
 	img, err := newImg(srcPath, r.Form)
@@ -91,6 +88,12 @@ func (h imgHandler) scale(
 		err := img.scale(dstPath)
 		if err != nil {
 			h.errorf(w, err, "failed to scale img")
+			return
+		}
+
+		err = os.Chtimes(dstPath, srcStat.ModTime(), srcStat.ModTime())
+		if err != nil {
+			h.errorf(w, err, "failed to update scaled img times")
 			return
 		}
 	}

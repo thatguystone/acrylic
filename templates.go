@@ -7,9 +7,10 @@ import (
 	"github.com/flosch/pongo2"
 	"github.com/julienschmidt/httprouter"
 	"github.com/thatguystone/cog"
-	"github.com/thatguystone/cog/cio"
 )
 
+// TemplateSet is a wrapper around Pongo2's TemplateSet, providing additional
+// functionality.
 type TemplateSet struct {
 	*pongo2.TemplateSet
 }
@@ -23,23 +24,26 @@ func templates(root string) (ts TemplateSet) {
 	return
 }
 
-func (ts TemplateSet) Handler(path string) httprouter.Handle {
-	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// Handler creates a new handler that serves the template at the given path
+// (relative to the TemplateSet's root).
+func (ts TemplateSet) Handler(path string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tmpl, err := ts.FromCache(path)
 		cog.Must(err, "failed to find template: %s", path)
 
-		wc := cio.NopWriteCloser(w)
-		if !isDebug() {
-			wc = Minify.Writer("text/html", w)
-		}
-
-		err = tmpl.ExecuteWriter(nil, wc)
-		if err == nil {
-			err = wc.Close()
-		}
-
+		err = tmpl.ExecuteWriter(nil, w)
 		if err != nil {
 			log.Printf("E: [tmpl] failed to write %s to client: %v", path, err)
 		}
+	})
+}
+
+// Handle creates a new handle that serves the template at the given path
+// (relative to the TemplateSet's root).
+func (ts TemplateSet) Handle(path string) httprouter.Handle {
+	handler := ts.Handler(path)
+
+	return func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		handler.ServeHTTP(w, r)
 	}
 }

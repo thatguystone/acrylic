@@ -7,68 +7,68 @@ import (
 	"time"
 )
 
-// Cmd wraps a command, allowing it to be restarted at will
-type Cmd struct {
+// cmd wraps an external command, allowing it to be restarted at will
+type cmd struct {
 	*exec.Cmd
-	Err  chan error
+	err  chan error
 	mtx  sync.Mutex
 	name string
 	args []string
 }
 
-func Command(name string, args ...string) *Cmd {
-	return &Cmd{
+func command(name string, args ...string) *cmd {
+	return &cmd{
 		name: name,
 		args: args,
-		Err:  make(chan error, 1),
+		err:  make(chan error, 1),
 	}
 }
 
 // Run starts the  command anew
-func (a *Cmd) Restart() {
-	a.mtx.Lock()
-	defer a.mtx.Unlock()
+func (c *cmd) restart() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 
-	a.term()
+	c.termUnlocked()
 
-	cmd := exec.Command(a.name, a.args...)
+	cmd := exec.Command(c.name, c.args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	a.Cmd = cmd
+	c.Cmd = cmd
 
 	go func() {
-		a.Err <- cmd.Run()
+		c.err <- cmd.Run()
 	}()
 }
 
-func (a *Cmd) Term() {
-	a.mtx.Lock()
-	defer a.mtx.Unlock()
-	a.term()
+func (c *cmd) term() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.termUnlocked()
 }
 
-func (a *Cmd) term() {
-	if a.Cmd == nil || a.Cmd.Process == nil {
-		a.Cmd = nil
+func (c *cmd) termUnlocked() {
+	if c.Cmd == nil || c.Cmd.Process == nil {
+		c.Cmd = nil
 		return
 	}
 
 	// Try to be nice
-	a.Cmd.Process.Signal(os.Interrupt)
+	c.Cmd.Process.Signal(os.Interrupt)
 
 	for {
 		// If the process exited somewhere else, we're done here
-		if a.Cmd.ProcessState != nil {
-			a.Cmd = nil
+		if c.Cmd.ProcessState != nil {
+			c.Cmd = nil
 			return
 		}
 
 		select {
 		case <-time.After(100 * time.Millisecond):
-			a.Cmd.Process.Kill()
+			c.Cmd.Process.Kill()
 
-		case <-a.Err:
-			a.Cmd = nil
+		case <-c.err:
+			c.Cmd = nil
 			return
 		}
 	}

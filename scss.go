@@ -14,6 +14,7 @@ import (
 	"github.com/wellington/go-libsass"
 )
 
+// ScssArgs collects the arguments to pass to ScssHandler().
 type ScssArgs struct {
 	Entry        string   // Main entry point
 	Recurse      string   // Directory to search for additional files
@@ -45,11 +46,6 @@ func (h *scssHandler) compile() (b bytes.Buffer, lastMod time.Time, err error) {
 
 	entries := []string{h.Entry}
 
-	style := libsass.NESTED_STYLE
-	if !isDebug() {
-		style = libsass.COMPRESSED_STYLE
-	}
-
 	if h.Recurse != "" {
 		err = filepath.Walk(h.Recurse,
 			func(path string, info os.FileInfo, err error) error {
@@ -78,7 +74,7 @@ func (h *scssHandler) compile() (b bytes.Buffer, lastMod time.Time, err error) {
 		comp, cErr := libsass.New(&b, nil,
 			libsass.Path(f),
 			libsass.IncludePaths(h.IncludePaths),
-			libsass.OutputStyle(style))
+			libsass.OutputStyle(libsass.NESTED_STYLE))
 
 		if cErr == nil {
 			cErr = comp.Run()
