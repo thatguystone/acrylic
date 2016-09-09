@@ -1,14 +1,18 @@
 package crawl
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/thatguystone/cog"
 	"github.com/thatguystone/cog/cfs"
 )
 
@@ -87,30 +91,53 @@ func (c *content) claim(impliedPath string) bool {
 	return c.state.claim(c, impliedPath)
 }
 
-// Save the content
 func (c *content) save(content string) {
 	c.saveBytes([]byte(content))
 }
 
 func (c *content) saveBytes(content []byte) {
+	c.saveReader(bytes.NewReader(content))
+}
+
+func (c *content) saveReader(content io.Reader) {
 	if c.typ == contentExternal {
 		panic(fmt.Errorf("cannot save external content (url=%s)", c))
 	}
 
-	impliedPath := ""
-	if c.isIndex {
-		impliedPath = "index.html"
-	}
+	path, impliedPath := c.outputPath()
 
 	if !c.claim(impliedPath) {
 		return
 	}
 
-	path := filepath.Join(c.state.Output, c.url.Path, impliedPath)
-	err := cfs.Write(path, content)
+	f, err := cfs.Create(path)
+	defer f.Close()
+
+	if err == nil {
+		_, err = io.Copy(f, content)
+	}
+
+	if err == nil {
+		err = f.Close()
+	}
+
+	if err == nil && !c.lastMod.IsZero() {
+		err = os.Chtimes(path, c.lastMod, c.lastMod)
+	}
+
 	if err != nil {
 		c.state.Errorf("[output] failed to save %s: %v", c, err)
 	}
+}
+
+func (c *content) outputPath() (path, impliedPath string) {
+	if c.isIndex {
+		impliedPath = "index.html"
+	}
+
+	path = filepath.Join(c.state.Output, c.url.Path, impliedPath)
+
+	return
 }
 
 // Load the content. This is only used for internal content.
@@ -126,7 +153,21 @@ func (c *content) load() {
 	defer c.state.wg.Done()
 	defer setLoaded()
 
-	resp, err := c.state.httpClient.Get(c.url.String())
+	outPath, _ := c.outputPath()
+	info, err := os.Stat(outPath)
+	if err == nil {
+		c.lastMod = info.ModTime()
+	}
+
+	req, err := http.NewRequest("GET", c.url.String(), nil)
+	cog.Must(err, "failed to create new request (how did that happen?)")
+
+	if !c.lastMod.IsZero() {
+		req.Header.Set("If-Modified-Since",
+			c.lastMod.UTC().Format(http.TimeFormat))
+	}
+
+	resp, err := c.state.httpClient.Do(req)
 	if err != nil {
 		c.state.Errorf("[content] failed to load %s: %v", c, err)
 		return

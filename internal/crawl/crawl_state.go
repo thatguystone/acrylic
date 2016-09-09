@@ -89,7 +89,7 @@ func (state *crawlState) deleteUnused() {
 }
 
 func (state *crawlState) setUsed(path string) {
-	for path != "/" {
+	for len(path) > 1 {
 		delete(state.unused, path)
 		path = filepath.Dir(path)
 	}

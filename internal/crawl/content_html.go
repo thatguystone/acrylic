@@ -2,7 +2,6 @@ package crawl
 
 import (
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -34,15 +33,17 @@ func (proc *processHTML) run(resp *http.Response) {
 
 	baseHref, _ := doc.Find("base").First().Attr("href")
 	if baseHref != "" {
-		proc.baseURL, err = url.Parse(baseHref)
+		proc.baseURL, err = proc.url.Parse(baseHref)
 		if err != nil {
 			proc.state.Errorf("[html] invalid base URL %s: %v", baseHref, err)
 		}
 	}
 
-	doc.Find("a[href]").Each(proc.anchor)
-	doc.Find("script[src]").Each(proc.script)
-	doc.Find("link[href]").Each(proc.link)
+	doc.Find("a[href]").Each(proc.updateAttr("href"))
+	doc.Find("img[src]").Each(proc.updateAttr("src"))
+	doc.Find("link[href]").Each(proc.updateAttr("href"))
+	doc.Find("script[src]").Each(proc.updateAttr("src"))
+	doc.Find("source[href]").Each(proc.updateAttr("href"))
 
 	html, err := doc.Html()
 	if err != nil {
@@ -55,27 +56,16 @@ func (proc *processHTML) run(resp *http.Response) {
 	proc.save(html)
 }
 
-func (proc processHTML) loadRelative(sURL string, hasAttr bool) *content {
-	return proc.process.loadRelative(sURL)
-}
+func (proc processHTML) updateAttr(attr string) func(int, *goquery.Selection) {
+	return func(i int, sel *goquery.Selection) {
+		val, ok := sel.Attr(attr)
+		if !ok {
+			return
+		}
 
-func (proc processHTML) anchor(i int, sel *goquery.Selection) {
-	c := proc.loadRelative(sel.Attr("href"))
-	if c != nil {
-		sel.SetAttr("href", c.url.String())
-	}
-}
-
-func (proc processHTML) script(i int, sel *goquery.Selection) {
-	c := proc.loadRelative(sel.Attr("src"))
-	if c != nil {
-		sel.SetAttr("src", c.url.String())
-	}
-}
-
-func (proc processHTML) link(i int, sel *goquery.Selection) {
-	c := proc.loadRelative(sel.Attr("href"))
-	if c != nil {
-		sel.SetAttr("href", c.url.String())
+		c := proc.loadRelative(val)
+		if c != nil {
+			sel.SetAttr(attr, c.url.String())
+		}
 	}
 }
