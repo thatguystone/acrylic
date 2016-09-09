@@ -21,3 +21,19 @@ func TestCrawlStateClaimConflict(t *testing.T) {
 		ct.run(mux)
 	})
 }
+
+func TestCrawlStateDeleteUnused(t *testing.T) {
+	ct := newTest(t)
+	defer ct.exit()
+
+	ct.fs.WriteFile("output/img.gif", gifBin)
+
+	mux := http.NewServeMux()
+	mux.Handle("/", stringHandler(`<!DOCTYPE html>`))
+
+	ct.NotPanics(func() {
+		ct.run(mux)
+	})
+
+	ct.fs.NotFileExists("output/img.gif")
+}

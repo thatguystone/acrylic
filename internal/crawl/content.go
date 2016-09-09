@@ -85,10 +85,10 @@ func (c *content) follow() *content {
 	return fc
 }
 
-// Try to claim the output path, along with any joined implied path, for this
-// content's exclusive use
-func (c *content) claim(impliedPath string) bool {
-	return c.state.claim(c, impliedPath)
+// Try to claim the output path for this content's exclusive use
+func (c *content) claim() (string, bool) {
+	path, impliedPath := c.outputPath()
+	return path, c.state.claim(c, impliedPath)
 }
 
 func (c *content) save(content string) {
@@ -104,9 +104,8 @@ func (c *content) saveReader(content io.Reader) {
 		panic(fmt.Errorf("cannot save external content (url=%s)", c))
 	}
 
-	path, impliedPath := c.outputPath()
-
-	if !c.claim(impliedPath) {
+	path, ok := c.claim()
+	if !ok {
 		return
 	}
 
@@ -190,7 +189,9 @@ func (c *content) load() {
 		return
 
 	case http.StatusNotModified:
-		// Nothing to do. Everything is great.
+		// The content is up-to-date. Just need to claim it so it doesn't get
+		// deleted
+		c.claim()
 		return
 
 	case http.StatusOK:

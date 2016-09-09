@@ -83,8 +83,12 @@ func (state *crawlState) deleteUnused() {
 	// Sort in reverse so that directories come after files
 	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
 
-	for _, p := range paths {
-		state.Logf("I: would delete: %s", p)
+	for _, path := range paths {
+		outPath := filepath.Join(state.Output, path)
+		err := os.Remove(outPath)
+		if err != nil {
+			state.Errorf("failed to remove %s from output: %v", path, err)
+		}
 	}
 }
 
