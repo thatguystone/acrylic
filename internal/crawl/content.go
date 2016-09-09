@@ -179,15 +179,13 @@ func (c *content) load() {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
 		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 
-		loc := resp.Header.Get("Location")
-		url, err := c.url.Parse(loc)
+		url, err := c.url.Parse(resp.Header.Get("Location"))
 
-		if err != nil {
-			c.state.Errorf("[content] invalid Location header: %v", err)
-		} else {
-			c.url = url
-			c.typ = contentRedirect
-		}
+		// Any errors should already have been filtered out by net/http itself
+		cog.Must(err, "invalid Location header")
+
+		c.url = url
+		c.typ = contentRedirect
 
 		return
 

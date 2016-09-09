@@ -128,7 +128,7 @@ func (state *crawlState) claim(c *content, impliedPath string) bool {
 	claim := func(path string) bool {
 		existing, ok := state.claims[path]
 		if ok {
-			state.Errorf("[content] output conflict: both %s and %s write to %s",
+			state.Errorf("[content] output conflict: both %s and %s use %s",
 				c, existing, path)
 		}
 
@@ -138,7 +138,7 @@ func (state *crawlState) claim(c *content, impliedPath string) bool {
 	state.mtx.Lock()
 	defer state.mtx.Unlock()
 
-	path := c.url.Path
+	path := filepath.Clean(c.url.Path)
 	impliedPath = filepath.Join(path, impliedPath)
 
 	if !claim(path) || !claim(impliedPath) {

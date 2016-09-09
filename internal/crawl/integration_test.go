@@ -40,14 +40,15 @@ func (ct crawlTest) exit() {
 	ct.cleanup()
 }
 
-func (ct crawlTest) run(h http.Handler) {
+func (ct crawlTest) run(h http.Handler, entries ...string) {
 	Run(Args{
-		Handler: h,
-		Output:  ct.fs.GetDataDir(),
-		Logf:    ct.Logf,
+		Handler:     h,
+		EntryPoints: entries,
+		Output:      ct.fs.Path("output"),
+		Logf:        ct.Logf,
 	})
 
-	ct.fs.DumpTree("/")
+	ct.fs.DumpTree("/output")
 }
 
 type stringHandler string
@@ -104,18 +105,18 @@ func TestBasic(t *testing.T) {
 		ct.run(mux)
 	})
 
-	index := ct.fs.SReadFile("index.html")
+	index := ct.fs.SReadFile("output/index.html")
 	ct.Contains(index, `<a href="/test/">`) // URL should be rewritten
 	ct.Contains(index, `/static/all.js`)
 
-	test := ct.fs.SReadFile("test/index.html")
+	test := ct.fs.SReadFile("output/test/index.html")
 	ct.Contains(test, `<a href="/">`) // URL should not be rewritten
 
-	css := ct.fs.SReadFile("static/all.css")
+	css := ct.fs.SReadFile("output/static/all.css")
 	ct.Contains(css, `url(/static/img.gif)`)
 	ct.NotContains(css, `img-redirect.gif`)
 
-	ct.fs.FileExists("/static/img.gif")
+	ct.fs.FileExists("output/static/img.gif")
 }
 
 func TestExternals(t *testing.T) {
@@ -133,24 +134,15 @@ func TestExternals(t *testing.T) {
 		ct.run(mux)
 	})
 
-	index := ct.fs.SReadFile("index.html")
+	index := ct.fs.SReadFile("output/index.html")
 	ct.Contains(index, `http://example.com/EXTERNAL0`)
 	ct.Contains(index, `http://example.com/EXTERNAL1`)
 	ct.Contains(index, `http://example.com/EXTERNAL2`)
 }
 
-func Test304(t *testing.T) {
+func TestCaching(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
-
-	ct.fs.WriteFile("img.gif", gifBin)
-
-	imgPath := ct.fs.Path("img.gif")
-
-	// Set some crazy mod time so any change is easily observable
-	lastMod := time.Now().Add(-time.Hour).Truncate(time.Second)
-	err := os.Chtimes(imgPath, lastMod, lastMod)
-	ct.Must.Nil(err)
 
 	mux := http.NewServeMux()
 	mux.Handle("/",
@@ -158,29 +150,41 @@ func Test304(t *testing.T) {
 			<img src="/img.gif">`))
 
 	requested := false
+	hasCached := false
+
 	mux.HandleFunc("/img.gif",
 		func(w http.ResponseWriter, r *http.Request) {
 			requested = true
-			http.ServeFile(w, r, imgPath)
+			hasCached = r.Header.Get("If-Modified-Since") != ""
+
+			if !hasCached {
+				ct.fs.WriteFile("output/img.gif", gifBin)
+			}
+
+			http.ServeFile(w, r, ct.fs.Path("output/img.gif"))
 		})
 
 	ct.NotPanics(func() {
 		ct.run(mux)
 	})
 
-	ct.Must.True(requested, "img.gif not requested")
+	ct.Must.True(requested)
+	ct.Must.False(hasCached)
+	requested = false
 
-	info, err := os.Stat(imgPath)
-	ct.Must.Nil(err)
-	newMod := info.ModTime()
-	ct.True(lastMod.Equal(newMod), "%s != %s", lastMod, newMod)
+	ct.NotPanics(func() {
+		ct.run(mux)
+	})
+
+	ct.Must.True(requested)
+	ct.Must.True(hasCached)
 }
 
 func TestOutputAsCache(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	imgPath := ct.fs.Path("img.gif")
+	imgPath := ct.fs.Path("output/img.gif")
 	lastMod := time.Now().Add(-time.Hour).Truncate(time.Second)
 
 	mux := http.NewServeMux()
@@ -190,8 +194,9 @@ func TestOutputAsCache(t *testing.T) {
 
 	mux.HandleFunc("/img.gif",
 		func(w http.ResponseWriter, r *http.Request) {
-			// Set some crazy mod time so any change is easily observable
-			ct.fs.WriteFile("img.gif", gifBin)
+			// Write directly into the output dir: simulate that we're caching
+			// there
+			ct.fs.WriteFile("output/img.gif", gifBin)
 			err := os.Chtimes(imgPath, lastMod, lastMod)
 			ct.Must.Nil(err)
 
@@ -206,35 +211,4 @@ func TestOutputAsCache(t *testing.T) {
 	ct.Must.Nil(err)
 	newMod := info.ModTime()
 	ct.True(lastMod.Equal(newMod), "%s != %s", lastMod, newMod)
-}
-
-func TestHTMLBaseHref(t *testing.T) {
-	ct := newTest(t)
-	defer ct.exit()
-
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<base href="test/">
-			<a href="rel-link">Link</a>
-			<a href="/nested/page">Nested</a>`))
-	mux.Handle("/test/rel-link",
-		stringHandler(`<!DOCTYPE html>`))
-
-	mux.Handle("/nested/page/",
-		stringHandler(`<!DOCTYPE html>
-			<base href="nest/">
-			<a href="rel">Link</a>`))
-	mux.Handle("/nested/page/nest/rel",
-		stringHandler(`<!DOCTYPE html>`))
-
-	ct.NotPanics(func() {
-		ct.run(mux)
-	})
-
-	index := ct.fs.SReadFile("index.html")
-	ct.Contains(index, `<a href="/test/rel-link">`)
-
-	nested := ct.fs.SReadFile("nested/page/index.html")
-	ct.Contains(nested, `<a href="/nested/page/nest/rel">`)
 }

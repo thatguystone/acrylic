@@ -36,6 +36,7 @@ func (proc *processHTML) run(resp *http.Response) {
 		proc.baseURL, err = proc.url.Parse(baseHref)
 		if err != nil {
 			proc.state.Errorf("[html] invalid base URL %s: %v", baseHref, err)
+			return
 		}
 	}
 
@@ -58,10 +59,9 @@ func (proc *processHTML) run(resp *http.Response) {
 
 func (proc processHTML) updateAttr(attr string) func(int, *goquery.Selection) {
 	return func(i int, sel *goquery.Selection) {
-		val, ok := sel.Attr(attr)
-		if !ok {
-			return
-		}
+		// Should always have attr: the selectors look for the attributes
+		// specifically
+		val, _ := sel.Attr(attr)
 
 		c := proc.loadRelative(val)
 		if c != nil {
