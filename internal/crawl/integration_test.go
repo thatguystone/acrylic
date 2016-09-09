@@ -85,7 +85,8 @@ func TestBasic(t *testing.T) {
 	mux.Handle("/test/",
 		stringHandler(`<!DOCTYPE html>
 			Test <a href="/">Index</a>`))
-	mux.Handle("/static/img.gif", bytesHandler(gifBin))
+	mux.Handle("/static/img.gif",
+		bytesHandler(gifBin))
 	mux.Handle("/static/img-redirect.gif",
 		http.RedirectHandler("img.gif", http.StatusMovedPermanently))
 	mux.Handle("/static/all.js",
@@ -190,8 +191,10 @@ func TestCacheBusting(t *testing.T) {
 		stringHandler(`<!DOCTYPE html>
 			<img src="/static/img.gif">
 			<a href="page/">Page</a>`))
-	mux.Handle("/page/", stringHandler(`<!DOCTYPE html>`))
-	mux.Handle("/static/img.gif", bytesHandler(gifBin))
+	mux.Handle("/page/",
+		stringHandler(`<!DOCTYPE html>`))
+	mux.Handle("/static/img.gif",
+		bytesHandler(gifBin))
 
 	ct.NotPanics(func() {
 		ct.run(mux)
