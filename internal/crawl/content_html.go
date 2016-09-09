@@ -40,11 +40,11 @@ func (proc *processHTML) run(resp *http.Response) {
 		}
 	}
 
-	doc.Find("a[href]").Each(proc.updateAttr("href"))
-	doc.Find("img[src]").Each(proc.updateAttr("src"))
-	doc.Find("link[href]").Each(proc.updateAttr("href"))
-	doc.Find("script[src]").Each(proc.updateAttr("src"))
-	doc.Find("source[href]").Each(proc.updateAttr("href"))
+	doc.Find("a[href]").Each(proc.updateAttr("href", false))
+	doc.Find("img[src]").Each(proc.updateAttr("src", true))
+	doc.Find("link[href]").Each(proc.updateAttr("href", true))
+	doc.Find("script[src]").Each(proc.updateAttr("src", true))
+	doc.Find("source[href]").Each(proc.updateAttr("href", true))
 
 	html, err := doc.Html()
 	if err != nil {
@@ -57,7 +57,10 @@ func (proc *processHTML) run(resp *http.Response) {
 	proc.save(html)
 }
 
-func (proc processHTML) updateAttr(attr string) func(int, *goquery.Selection) {
+func (proc processHTML) updateAttr(
+	attr string,
+	cacheBust bool) func(int, *goquery.Selection) {
+
 	return func(i int, sel *goquery.Selection) {
 		// Should always have attr: the selectors look for the attributes
 		// specifically
@@ -65,7 +68,12 @@ func (proc processHTML) updateAttr(attr string) func(int, *goquery.Selection) {
 
 		c := proc.loadRelative(val)
 		if c != nil {
-			sel.SetAttr(attr, c.url.String())
+			url := c.url.String()
+			if cacheBust {
+				url = c.bustURL()
+			}
+
+			sel.SetAttr(attr, url)
 		}
 	}
 }

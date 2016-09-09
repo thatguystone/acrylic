@@ -139,6 +139,19 @@ func (c *content) outputPath() (path, impliedPath string) {
 	return
 }
 
+func (c *content) bustURL() string {
+	url := *c.url // Don't modify c's URL
+
+	if !c.lastMod.IsZero() {
+		qs := url.Query()
+		qs.Set("v", fmt.Sprintf("%d", c.lastMod.Unix()))
+
+		url.RawQuery = qs.Encode()
+	}
+
+	return url.String()
+}
+
 // Load the content. This is only used for internal content.
 func (c *content) load() {
 	doned := false

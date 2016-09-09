@@ -39,7 +39,7 @@ func (proc *processCSS) run(resp *http.Response) {
 		url := string(match[1])
 		c := proc.loadRelative(url)
 
-		cURL := c.url.String()
+		cURL := c.bustURL()
 		if url != cURL {
 			css = bytes.Replace(css,
 				match[0],

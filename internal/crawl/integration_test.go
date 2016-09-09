@@ -68,6 +68,7 @@ func (h bytesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript")
 	}
 
+	w.Header().Set("Last-Modified", time.Now().Format(http.TimeFormat))
 	w.Write(h)
 }
 
@@ -113,7 +114,7 @@ func TestBasic(t *testing.T) {
 	ct.Contains(test, `<a href="/">`) // URL should not be rewritten
 
 	css := ct.fs.SReadFile("output/static/all.css")
-	ct.Contains(css, `url(/static/img.gif)`)
+	ct.Contains(css, `url("/static/img.gif`)
 	ct.NotContains(css, `img-redirect.gif`)
 
 	ct.fs.FileExists("output/static/img.gif")
@@ -178,6 +179,27 @@ func TestCaching(t *testing.T) {
 
 	ct.Must.True(requested)
 	ct.Must.True(hasCached)
+}
+
+func TestCacheBusting(t *testing.T) {
+	ct := newTest(t)
+	defer ct.exit()
+
+	mux := http.NewServeMux()
+	mux.Handle("/",
+		stringHandler(`<!DOCTYPE html>
+			<img src="/static/img.gif">
+			<a href="page/">Page</a>`))
+	mux.Handle("/page/", stringHandler(`<!DOCTYPE html>`))
+	mux.Handle("/static/img.gif", bytesHandler(gifBin))
+
+	ct.NotPanics(func() {
+		ct.run(mux)
+	})
+
+	index := ct.fs.SReadFile("output/index.html")
+	ct.Contains(index, `img.gif?v=`)
+	ct.Contains(index, `href="/page/"`)
 }
 
 func TestOutputAsCache(t *testing.T) {
