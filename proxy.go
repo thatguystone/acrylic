@@ -109,8 +109,18 @@ func (p *proxy) checkApp() error {
 
 	p.app.url = url
 
-	base := filepath.Base(p.AppPath)
-	p.app.cmd = command("./"+cfs.DropExt(base), p.AppArgs...)
+	abs, err := filepath.Abs(p.AppPath)
+	if err != nil {
+		return errors.Wrap(err, "could not make `AppPath` absolute")
+	}
+
+	bin := filepath.Base(abs)
+	ext := filepath.Ext(bin)
+	if ext == ".go" {
+		bin = cfs.DropExt(bin)
+	}
+
+	p.app.cmd = command("./"+bin, p.AppArgs...)
 
 	return nil
 }
@@ -204,7 +214,11 @@ func (p *proxy) runWebpack() {
 
 func (p *proxy) rebuild() {
 	log.Println("I: Rebuilding...")
-	defer log.Println("I: Rebuild complete")
+
+	start := time.Now()
+	defer func() {
+		log.Println("I: Rebuild complete, took", time.Now().Sub(start))
+	}()
 
 	p.app.cmd.term()
 
