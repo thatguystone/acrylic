@@ -5,6 +5,26 @@ import (
 	"testing"
 )
 
+func TestCrawlStateInternalQueryStrings(t *testing.T) {
+	ct := newTest(t)
+	defer ct.exit()
+
+	mux := http.NewServeMux()
+	mux.Handle("/",
+		stringHandler(`<!DOCTYPE html>
+			<a href="/page/?mucho=fun">Page</a>
+			<a href="/page/?mucho=boring">Different Page?</a>`))
+	mux.Handle("/page",
+		stringHandler(`<!DOCTYPE html>`))
+
+	ct.NotPanics(func() {
+		ct.run(mux)
+	})
+
+	index := ct.fs.SReadFile("output/index.html")
+	ct.Contains(index, `href="/page/`)
+}
+
 func TestCrawlStateClaimConflict(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()

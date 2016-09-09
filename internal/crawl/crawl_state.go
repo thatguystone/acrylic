@@ -128,25 +128,23 @@ func (state *crawlState) load(url string) *content {
 }
 
 // Claim the output path for the given content
-func (state *crawlState) claim(c *content, impliedPath string) bool {
-	claim := func(path string) bool {
-		existing, ok := state.claims[path]
-		if ok {
-			state.Errorf("[content] output conflict: both %s and %s use %s",
-				c, existing, path)
-		}
+func (state *crawlState) claim(
+	c *content,
+	path, impliedPath string) (oc *content, ok bool) {
 
-		return !ok
+	claim := func(path string) bool {
+		oc = state.claims[path]
+		return oc == nil
 	}
 
 	state.mtx.Lock()
 	defer state.mtx.Unlock()
 
-	path := filepath.Clean(c.url.Path)
-	impliedPath = filepath.Join(path, impliedPath)
+	path = filepath.Clean(path)
+	impliedPath = filepath.Clean(impliedPath)
 
 	if !claim(path) || !claim(impliedPath) {
-		return false
+		return
 	}
 
 	state.setUsed(path)
@@ -155,7 +153,8 @@ func (state *crawlState) claim(c *content, impliedPath string) bool {
 	state.setUsed(impliedPath)
 	state.claims[impliedPath] = c
 
-	return true
+	ok = true
+	return
 }
 
 // Errorf logs an error to the user and fails the crawl

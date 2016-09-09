@@ -85,10 +85,28 @@ func (c *content) follow() *content {
 	return fc
 }
 
-// Try to claim the output path for this content's exclusive use
+// Try to claim the output path for this content's exclusive use.
+//
+// In the case of two things that have the same path but different query
+// strings, the first one to claim is the one that will write. The other is
+// simply ignored since it's assumed that two things with the same path are
+// the same thing.
+//
+//
 func (c *content) claim() (string, bool) {
 	path, impliedPath := c.outputPath()
-	return path, c.state.claim(c, impliedPath)
+
+	oc, ok := c.state.claim(c, path, impliedPath)
+	if !ok {
+		oPath, oImpliedPath := oc.outputPath()
+		if path != oPath || impliedPath != oImpliedPath {
+			c.state.Errorf("[content] output conflict: "+
+				"both %s and %s use %s",
+				c, oc, path)
+		}
+	}
+
+	return impliedPath, ok
 }
 
 func (c *content) save(content string) {
@@ -134,7 +152,8 @@ func (c *content) outputPath() (path, impliedPath string) {
 		impliedPath = "index.html"
 	}
 
-	path = filepath.Join(c.state.Output, c.url.Path, impliedPath)
+	path = filepath.Join(c.state.Output, c.url.Path)
+	impliedPath = filepath.Join(path, impliedPath)
 
 	return
 }
