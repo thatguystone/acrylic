@@ -42,7 +42,7 @@ func newContent(state *crawlState, sURL string) *content {
 
 		state.Errorf("[url parse] invalid URL: %s: %v", sURL, err)
 
-	case c.url.Scheme != "" || c.url.Host != "":
+	case c.url.Scheme != "" || c.url.Opaque != "" || c.url.Host != "":
 		c.typ = contentExternal
 	}
 

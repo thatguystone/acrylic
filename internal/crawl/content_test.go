@@ -5,6 +5,23 @@ import (
 	"testing"
 )
 
+func TestContentOpaqueURL(t *testing.T) {
+	ct := newTest(t)
+	defer ct.exit()
+
+	mux := http.NewServeMux()
+	mux.Handle("/",
+		stringHandler(`<!DOCTYPE html>
+			<a href="mailto:a@stoney.io">a@stoney.io</a>`))
+
+	ct.NotPanics(func() {
+		ct.run(mux)
+	})
+
+	css := ct.fs.SReadFile("output/index.html")
+	ct.Contains(css, `href="mailto:a@stoney.io"`)
+}
+
 func TestContentInvalidEntryURL(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
