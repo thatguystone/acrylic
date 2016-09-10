@@ -48,7 +48,6 @@ func (h imgHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	srcPath := filepath.Join(h.root, upath)
-
 	img, err := newImg(srcPath, r.Form)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -56,10 +55,15 @@ func (h imgHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !img.needsScale {
+	switch {
+	case !img.needsScale && r.FormValue(CacheBustParam) == "":
+		h.redirect(w, r, srcPath, r.URL.Path)
+
+	case !img.needsScale:
 		// Provides Last-Modified caching
 		h.fileServer.ServeHTTP(w, r)
-	} else {
+
+	default:
 		h.scale(w, r, srcPath, img)
 	}
 }
@@ -68,15 +72,15 @@ func (h imgHandler) scale(
 	w http.ResponseWriter, r *http.Request,
 	srcPath string, img img) {
 
-	scaledName := img.scaledName()
-	dstPath := filepath.Join(h.s.Output,
-		filepath.Dir(r.URL.String()),
-		scaledName)
-
 	srcStat, ok, _ := h.statFile(srcPath, w, true)
 	if !ok {
 		return
 	}
+
+	scaledName := img.scaledName()
+	dstPath := filepath.Join(h.s.Output,
+		filepath.Dir(r.URL.String()),
+		scaledName)
 
 	dstStat, ok, err := h.statFile(dstPath, w, false)
 	if err != nil {
@@ -85,6 +89,7 @@ func (h imgHandler) scale(
 
 	// If the internal cache is outdated, update before serving
 	if !ok || !srcStat.ModTime().Equal(dstStat.ModTime()) {
+
 		err := img.scale(dstPath)
 		if err != nil {
 			h.errorf(w, err, "failed to scale img")
@@ -98,7 +103,26 @@ func (h imgHandler) scale(
 		}
 	}
 
-	http.Redirect(w, r, "./"+scaledName, http.StatusMovedPermanently)
+	h.redirect(w, r, srcPath, "./"+scaledName)
+}
+
+func (h imgHandler) redirect(
+	w http.ResponseWriter, r *http.Request,
+	srcPath string, toPath string) {
+
+	srcStat, ok, _ := h.statFile(srcPath, w, true)
+	if !ok {
+		return
+	}
+
+	url := url.URL{
+		Path: toPath,
+		RawQuery: fmt.Sprintf("%s=%d",
+			CacheBustParam,
+			srcStat.ModTime().Unix()),
+	}
+
+	http.Redirect(w, r, url.String(), http.StatusFound)
 }
 
 type img struct {

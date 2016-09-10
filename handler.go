@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// CacheBustParam is the query string parameter used for cache busters
+const CacheBustParam = "v"
+
 type handler struct{}
 
 func (h handler) statFile(
