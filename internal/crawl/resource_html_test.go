@@ -1,20 +1,19 @@
 package crawl
 
-import (
-	"net/http"
-	"testing"
-)
+import "testing"
 
 func TestResourceHTMLBasic(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<link>
-			<script></script>
-			<a href=""></a>`))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<link>
+				<script></script>
+				<a href=""></a>`,
+		})
 
 	ct.NotPanics(func() {
 		ct.run(mux)

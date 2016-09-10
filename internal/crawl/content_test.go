@@ -9,10 +9,12 @@ func TestContentOpaqueURL(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<a href="mailto:a@stoney.io">a@stoney.io</a>`))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<a href="mailto:a@stoney.io">a@stoney.io</a>`,
+		})
 
 	ct.NotPanics(func() {
 		ct.run(mux)
@@ -26,8 +28,11 @@ func TestContentInvalidEntryURL(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/", stringHandler(`<!DOCTYPE html>`))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str:  `<!DOCTYPE html>`,
+		})
 
 	ct.Panics(func() {
 		ct.run(mux, "://drunk-url")
@@ -38,8 +43,11 @@ func TestContentExternalEntryURL(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/", stringHandler(`<!DOCTYPE html>`))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str:  `<!DOCTYPE html>`,
+		})
 
 	ct.Panics(func() {
 		ct.run(mux, "http://example.com")
@@ -50,10 +58,12 @@ func TestContentInvalidRelURL(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<a href="://drunk-url">Test</a>`))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<a href="://drunk-url">Test</a>`,
+		})
 
 	ct.Panics(func() {
 		ct.run(mux)
@@ -64,12 +74,17 @@ func TestContentRedirectLoop(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<a href="redirect">Redirect</a>`))
-	mux.Handle("/redirect",
-		http.RedirectHandler("/redirect", http.StatusMovedPermanently))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<a href="redirect">Redirect</a>`,
+		},
+		testHandler{
+			path: "/redirect",
+			handler: http.RedirectHandler("/redirect",
+				http.StatusMovedPermanently),
+		})
 
 	ct.Panics(func() {
 		ct.run(mux)
@@ -80,14 +95,18 @@ func TestContentInvalidRedirect(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<a href="redirect">Redirect</a>`))
-	mux.HandleFunc("/redirect",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Location", "://herp-derp")
-			w.WriteHeader(http.StatusFound)
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<a href="redirect">Redirect</a>`,
+		},
+		testHandler{
+			path: "/redirect",
+			fn: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", "://herp-derp")
+				w.WriteHeader(http.StatusFound)
+			},
 		})
 
 	ct.Panics(func() {
@@ -99,11 +118,13 @@ func TestContentInvalidLastModified(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Last-Modified", "What time is it?!")
-			w.WriteHeader(http.StatusOK)
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			fn: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Last-Modified", "What time is it?!")
+				w.WriteHeader(http.StatusOK)
+			},
 		})
 
 	ct.NotPanics(func() {
@@ -115,11 +136,13 @@ func TestContentInvalidContentType(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "cookies and cake")
-			w.WriteHeader(http.StatusOK)
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			fn: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "cookies and cake")
+				w.WriteHeader(http.StatusOK)
+			},
 		})
 
 	ct.Panics(func() {
@@ -131,10 +154,12 @@ func TestContent500(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			fn: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
 		})
 
 	ct.Panics(func() {

@@ -1,6 +1,7 @@
 package crawl
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,6 +52,35 @@ func (ct crawlTest) run(h http.Handler, entries ...string) {
 	ct.fs.DumpTree("/output")
 }
 
+type testHandler struct {
+	path    string
+	handler http.Handler
+	fn      func(http.ResponseWriter, *http.Request)
+	str     string
+}
+
+func (ct crawlTest) mux(handlers ...testHandler) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	for _, h := range handlers {
+		switch {
+		case h.handler != nil:
+			mux.Handle(h.path, h.handler)
+
+		case h.fn != nil:
+			mux.HandleFunc(h.path, h.fn)
+
+		case h.str != "":
+			mux.Handle(h.path, stringHandler(h.str))
+
+		default:
+			panic(fmt.Errorf("missing handler at %s", h.path))
+		}
+	}
+
+	return mux
+}
+
 type stringHandler string
 
 func (h stringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -76,32 +106,45 @@ func TestIntegrationBasic(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<link href="/static/all.css" rel="stylesheet">
-			<script src="./static/all.js"></script>
-			Index <a href="/test">Test</a>`))
-	mux.Handle("/test/",
-		stringHandler(`<!DOCTYPE html>
-			Test <a href="/">Index</a>`))
-	mux.Handle("/static/img.gif",
-		bytesHandler(gifBin))
-	mux.Handle("/static/img-redirect.gif",
-		http.RedirectHandler("img.gif", http.StatusMovedPermanently))
-	mux.Handle("/static/all.js",
-		stringHandler(`alert("js!");`))
-	mux.Handle("/static/all.css",
-		stringHandler(`
-			html {
-				background: url(/static/img.gif);
-			}
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<link href="/static/all.css" rel="stylesheet">
+				<script src="./static/all.js"></script>
+				Index <a href="/test">Test</a>`,
+		},
+		testHandler{
+			path: "/test/",
+			str: `<!DOCTYPE html>
+				Test <a href="/">Index</a>`,
+		},
+		testHandler{
+			path:    "/static/img.gif",
+			handler: bytesHandler(gifBin),
+		},
+		testHandler{
+			path: "/static/img-redirect.gif",
+			handler: http.RedirectHandler("img.gif",
+				http.StatusMovedPermanently),
+		},
+		testHandler{
+			path: "/static/all.js",
+			str:  `alert("js!");`,
+		},
+		testHandler{
+			path: "/static/all.css",
+			str: `
+				html {
+					background: url(/static/img.gif);
+				}
 
-			a {
-				background: url("/static/img-redirect.gif");
-				color: #e5e5e5;
-			}
-		`))
+				a {
+					background: url("/static/img-redirect.gif");
+					color: #e5e5e5;
+				}
+			`,
+		})
 
 	ct.NotPanics(func() {
 		ct.run(mux)
@@ -125,12 +168,14 @@ func TestIntegrationExternals(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<link href="http://example.com/EXTERNAL0" rel="stylesheet">
-			<script src="http://example.com/EXTERNAL1"></script>
-			<a href="http://example.com/EXTERNAL2">External</a>`))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<link href="http://example.com/EXTERNAL0" rel="stylesheet">
+				<script src="http://example.com/EXTERNAL1"></script>
+				<a href="http://example.com/EXTERNAL2">External</a>`,
+		})
 
 	ct.NotPanics(func() {
 		ct.run(mux)
@@ -146,10 +191,12 @@ func TestIntegrationCaching(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<img src="/img.gif">`))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<img src="/img.gif">`,
+		})
 
 	requested := false
 	hasCached := false
@@ -186,15 +233,21 @@ func TestIntegrationCacheBusting(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<img src="/static/img.gif">
-			<a href="page/">Page</a>`))
-	mux.Handle("/page/",
-		stringHandler(`<!DOCTYPE html>`))
-	mux.Handle("/static/img.gif",
-		bytesHandler(gifBin))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<img src="/static/img.gif">
+				<a href="page/">Page</a>`,
+		},
+		testHandler{
+			path: "/page/",
+			str:  `<!DOCTYPE html>`,
+		},
+		testHandler{
+			path:    "/static/img.gif",
+			handler: bytesHandler(gifBin),
+		})
 
 	ct.NotPanics(func() {
 		ct.run(mux)
@@ -212,10 +265,12 @@ func TestIntegrationOutputAsCache(t *testing.T) {
 	imgPath := ct.fs.Path("output/img.gif")
 	lastMod := time.Now().Add(-time.Hour).Truncate(time.Second)
 
-	mux := http.NewServeMux()
-	mux.Handle("/",
-		stringHandler(`<!DOCTYPE html>
-			<img src="/img.gif">`))
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str: `<!DOCTYPE html>
+				<img src="/img.gif">`,
+		})
 
 	mux.HandleFunc("/img.gif",
 		func(w http.ResponseWriter, r *http.Request) {
