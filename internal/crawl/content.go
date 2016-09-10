@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/thatguystone/cog"
 	"github.com/thatguystone/cog/cfs"
@@ -17,17 +18,17 @@ import (
 type content struct {
 	state *state
 
-	loaded sync.WaitGroup
-	url    *url.URL
-	typ    contentType
-	cached cacheEntry
-	rsrc   resourcer
+	loaded     sync.WaitGroup
+	url        *url.URL
+	typ        contentType
+	cacheEntry cacheEntry
+	rsrc       resourcer
 }
 
 func newContent(state *state, sURL string) *content {
 	c := &content{
-		state:  state,
-		cached: state.cache.get(sURL),
+		state:      state,
+		cacheEntry: state.cache.get(sURL),
 	}
 
 	var err error
@@ -101,8 +102,8 @@ func (c *content) load() {
 		// any of its dependent resources are claimed
 		recheck = true
 
-		resp.contType = c.cached.ContType
-		resp.lastMod = c.cached.ModTime
+		resp.contType = c.cacheEntry.ContType
+		resp.lastMod = c.getLastMod()
 
 	case http.StatusOK:
 		// Proceed as normal
@@ -128,7 +129,11 @@ func (c *content) load() {
 	}
 
 	path := c.rsrc.path()
-	c.state.cache.update(path, c.url, resp)
+	c.state.cache.update(c.url, cacheEntry{
+		Path:       path,
+		HasModTime: !resp.lastMod.IsZero(),
+		ContType:   resp.contType,
+	})
 
 	outPath := c.state.outputPath(path)
 	if recheck {
@@ -167,6 +172,10 @@ func (c *content) process(path string, resp *response) {
 		err = f.Close()
 	}
 
+	if err == nil && !resp.lastMod.IsZero() {
+		err = os.Chtimes(path, resp.lastMod, resp.lastMod)
+	}
+
 	if err != nil {
 		c.state.Errorf("[content] failed to process %s: %v",
 			c, err)
@@ -179,9 +188,10 @@ func (c *content) doRequest() *response {
 	cog.Must(err, "[content] "+
 		"failed to create new request (how did that happen?)")
 
-	if !c.cached.ModTime.IsZero() {
+	lastMod := c.getLastMod()
+	if !lastMod.IsZero() {
 		req.Header.Set("If-Modified-Since",
-			c.cached.ModTime.UTC().Format(http.TimeFormat))
+			lastMod.UTC().Format(http.TimeFormat))
 	}
 
 	resp, err := c.state.httpClient.Do(req)
@@ -191,6 +201,25 @@ func (c *content) doRequest() *response {
 	}
 
 	return wrapResponse(resp, c.state)
+}
+
+func (c *content) getLastMod() (t time.Time) {
+	if !c.cacheEntry.HasModTime {
+		return
+	}
+
+	path := c.state.outputPath(c.cacheEntry.Path)
+	info, err := os.Stat(path)
+	if err == nil {
+		t = info.ModTime()
+		return
+	}
+
+	if !os.IsNotExist(err) {
+		c.state.Errorf("[content] failed to stat %s: %v", path, err)
+	}
+
+	return
 }
 
 // Try to claim the output path for this content's exclusive use.

@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"os"
 	"sync"
-	"time"
 )
 
 type cache struct {
@@ -16,9 +15,13 @@ type cache struct {
 }
 
 type cacheEntry struct {
-	Path     string
-	ModTime  time.Time
-	ContType string
+	Path     string // Path to file, without Args.Output
+	ContType string // Last known Content-Type
+
+	// If the ModTime of the file can be used in Last-Mod. By using the mod
+	// time on disk, we can detect when content has been updated elsewhere and
+	// leave it alone.
+	HasModTime bool
 }
 
 const cachePath = ".acrylic-cache"
@@ -50,15 +53,11 @@ func loadCache(cch *cache, path string) error {
 //
 // The given filePath should be the path that the resource writes to that does
 // not include the output directory.
-func (cch *cache) update(filePath string, url *url.URL, resp *response) {
+func (cch *cache) update(url *url.URL, ce cacheEntry) {
 	cch.rmtx.Lock()
 	defer cch.rmtx.Unlock()
 
-	cch.Entries[url.String()] = cacheEntry{
-		Path:     filePath,
-		ModTime:  resp.lastMod,
-		ContType: resp.contType,
-	}
+	cch.Entries[url.String()] = ce
 }
 
 func (cch *cache) get(url string) cacheEntry {
