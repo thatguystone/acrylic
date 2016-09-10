@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -83,8 +84,6 @@ func (c *content) load() {
 
 	defer resp.Body.Close()
 
-	recheck := false
-
 	switch resp.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
 		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
@@ -99,9 +98,8 @@ func (c *content) load() {
 		return
 
 	case http.StatusNotModified:
-		// If the content is up-to-date, then need to recheck everything
-		// referenced in the cached content (ie. images).
-		recheck = true
+		// If the content is up-to-date, then nothing to do here
+		return
 
 	case http.StatusOK:
 		// Proceed as normal
@@ -125,30 +123,16 @@ func (c *content) load() {
 		return
 	}
 
-	path := filepath.Join(c.state.Output, c.rsrc.path())
-
-	err := cfs.CreateParents(path)
-	if err != nil {
-		c.state.Errorf("[content] "+
-			"failed to create parent directories for %s: %v",
-			c, err)
+	r := c.rsrc.process(resp)
+	if r == nil {
 		return
 	}
 
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		c.state.Errorf("[content] "+
-			"failed to create dest file for %s: %v",
-			c, err)
-		return
-	}
-
-	defer f.Close()
-
-	if recheck {
-		err = c.rsrc.recheck(resp, f)
-	} else {
-		err = c.rsrc.process(resp, f)
+	path := c.state.outputPath(c.rsrc.path())
+	f, err := cfs.Create(path)
+	if err == nil {
+		defer f.Close()
+		_, err = io.Copy(f, r)
 	}
 
 	if err == nil {
@@ -160,8 +144,7 @@ func (c *content) load() {
 	}
 
 	if err != nil {
-		c.state.Errorf("[content] "+
-			"failed to process dest file for %s: %v",
+		c.state.Errorf("[content] failed to process %s: %v",
 			c, err)
 		return
 	}
@@ -201,7 +184,7 @@ func (c *content) updateCacheMod() {
 	paths := possibleResourcePaths(c.state, c.url)
 
 	for _, path := range paths {
-		info, err := os.Stat(filepath.Join(c.state.Output, path))
+		info, err := os.Stat(c.state.outputPath(path))
 		switch {
 		case err == nil && !info.IsDir():
 			c.cacheMod = info.ModTime()
@@ -229,11 +212,11 @@ func (c *content) claim(paths []string) bool {
 
 	oPaths := oc.rsrc.pathClaims()
 
-	sort.Sort(sort.StringSlice(paths))
-	sort.Sort(sort.StringSlice(oPaths))
-
 	fail := len(paths) != len(oPaths)
 	if !fail {
+		sort.Sort(sort.StringSlice(paths))
+		sort.Sort(sort.StringSlice(oPaths))
+
 		for i, path := range paths {
 			if filepath.Clean(path) != filepath.Clean(oPaths[i]) {
 				fail = true
@@ -274,19 +257,6 @@ func (c *content) follow() *content {
 	}
 
 	return fc
-}
-
-func (c *content) bustedURL() string {
-	url := *c.url // Don't modify c's URL
-
-	if !c.lastMod.IsZero() {
-		qs := url.Query()
-		qs.Set("v", fmt.Sprintf("%d", c.lastMod.Unix()))
-
-		url.RawQuery = qs.Encode()
-	}
-
-	return url.String()
 }
 
 func (c *content) String() string {

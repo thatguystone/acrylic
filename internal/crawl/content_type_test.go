@@ -7,13 +7,15 @@ import (
 	"github.com/thatguystone/cog/check"
 )
 
-func TestContentTypeString(t *testing.T) {
+func TestContentTypeCoverage(t *testing.T) {
 	check.New(t)
 
 	i := 0
 	str := ""
 	for !strings.Contains(str, "invalid") {
-		str = contentType(i).String()
+		ct := contentType(i)
+		ct.newResource()
+		str = ct.String()
 		i++
 	}
 }

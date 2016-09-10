@@ -3,8 +3,8 @@ package crawl
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
-	"os"
 	"regexp"
 )
 
@@ -14,11 +14,7 @@ type resourceCSS struct {
 	resourceBase
 }
 
-func (rsrc *resourceCSS) recheck(resp *response, f *os.File) error {
-	return nil
-}
-
-func (rsrc *resourceCSS) process(resp *response, f *os.File) error {
+func (rsrc *resourceCSS) process(resp *response) io.Reader {
 	r := Minify.Reader("text/css", resp.Body)
 	css, err := ioutil.ReadAll(r)
 	resp.Body.Close()
@@ -34,7 +30,7 @@ func (rsrc *resourceCSS) process(resp *response, f *os.File) error {
 		url := string(match[1])
 		c := rsrc.loadRelative(url)
 
-		cURL := c.bustedURL()
+		cURL := c.url.String()
 		if url != cURL {
 			css = bytes.Replace(css,
 				match[0],
@@ -43,6 +39,5 @@ func (rsrc *resourceCSS) process(resp *response, f *os.File) error {
 		}
 	}
 
-	_, err = f.Write(css)
-	return err
+	return bytes.NewReader(css)
 }

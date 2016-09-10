@@ -1,8 +1,8 @@
 package crawl
 
 import (
+	"io"
 	"net/url"
-	"os"
 )
 
 // Resourcer is the common interface for all resource types
@@ -16,13 +16,10 @@ type resourcer interface {
 	// Get the final path that this resource writes to
 	path() string
 
-	// The server said this resource wasn't modified, but the cached resource
-	// still might need to be checked/rewritten to be sure that anything it
-	// depends on didn't change.
-	recheck(resp *response, f *os.File) error
-
-	// This is a new resource. Process it and write the result to the file.
-	process(resp *response, f *os.File) error
+	// This is a new resource. Process it and return some content for writing.
+	// If nil is returned, no file is created (and any existing file is left
+	// untouched).
+	process(resp *response) io.Reader
 }
 
 // Get all possible paths that the given URL might map to

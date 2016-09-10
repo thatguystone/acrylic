@@ -84,7 +84,7 @@ func (state *state) deleteUnused() {
 	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
 
 	for _, path := range paths {
-		outPath := filepath.Join(state.Output, path)
+		outPath := state.outputPath(path)
 		err := os.Remove(outPath)
 		if err != nil {
 			state.Errorf("[crawl] "+
@@ -130,7 +130,11 @@ func (state *state) load(url string) *content {
 	return c
 }
 
-// Claim the output path for the given content
+func (state *state) outputPath(path string) string {
+	return filepath.Join(state.Output, path)
+}
+
+// Claim the output paths for the given content
 func (state *state) claim(
 	c *content,
 	paths []string) (oc *content, oPath string, ok bool) {

@@ -229,35 +229,6 @@ func TestIntegrationCaching(t *testing.T) {
 	ct.Must.True(hasCached)
 }
 
-func TestIntegrationCacheBusting(t *testing.T) {
-	ct := newTest(t)
-	defer ct.exit()
-
-	mux := ct.mux(
-		testHandler{
-			path: "/",
-			str: `<!DOCTYPE html>
-				<img src="/static/img.gif">
-				<a href="page/">Page</a>`,
-		},
-		testHandler{
-			path: "/page/",
-			str:  `<!DOCTYPE html>`,
-		},
-		testHandler{
-			path:    "/static/img.gif",
-			handler: bytesHandler(gifBin),
-		})
-
-	ct.NotPanics(func() {
-		ct.run(mux)
-	})
-
-	index := ct.fs.SReadFile("output/index.html")
-	ct.Contains(index, `img.gif?v=`)
-	ct.Contains(index, `href="/page/"`)
-}
-
 func TestIntegrationOutputAsCache(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
@@ -270,17 +241,18 @@ func TestIntegrationOutputAsCache(t *testing.T) {
 			path: "/",
 			str: `<!DOCTYPE html>
 				<img src="/img.gif">`,
-		})
+		},
+		testHandler{
+			path: "/img.gif",
+			fn: func(w http.ResponseWriter, r *http.Request) {
+				// Write directly into the output dir: simulate that we're
+				// caching there
+				ct.fs.WriteFile("output/img.gif", gifBin)
+				err := os.Chtimes(imgPath, lastMod, lastMod)
+				ct.Must.Nil(err)
 
-	mux.HandleFunc("/img.gif",
-		func(w http.ResponseWriter, r *http.Request) {
-			// Write directly into the output dir: simulate that we're caching
-			// there
-			ct.fs.WriteFile("output/img.gif", gifBin)
-			err := os.Chtimes(imgPath, lastMod, lastMod)
-			ct.Must.Nil(err)
-
-			http.ServeFile(w, r, imgPath)
+				http.ServeFile(w, r, imgPath)
+			},
 		})
 
 	ct.NotPanics(func() {
