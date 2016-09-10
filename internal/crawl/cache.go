@@ -1,14 +1,18 @@
 package crawl
 
 import (
+	"encoding/json"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 )
 
 type cache struct {
-	rmtx    sync.RWMutex
-	Entries map[string]cacheEntry
+	Entries map[string]cacheEntry // Current entries
+
+	rmtx       sync.RWMutex
+	oldEntries map[string]cacheEntry // Past entries
 }
 
 type cacheEntry struct {
@@ -19,30 +23,52 @@ type cacheEntry struct {
 
 const cachePath = ".acrylic-cache"
 
-func newCache() *cache {
-	return &cache{
-		Entries: map[string]cacheEntry{},
+func loadCache(cch *cache, path string) error {
+	cch.Entries = map[string]cacheEntry{}
+
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = nil
+		}
+
+		return err
 	}
+
+	defer f.Close()
+
+	err = json.NewDecoder(f).Decode(cch)
+	if err == nil {
+		cch.oldEntries = cch.Entries
+		cch.Entries = map[string]cacheEntry{}
+	}
+
+	return err
 }
 
 // Update the cache.
 //
 // The given filePath should be the path that the resource writes to that does
 // not include the output directory.
-func (ch *cache) update(filePath string, url *url.URL, resp *response) {
-	ch.rmtx.Lock()
-	defer ch.rmtx.Unlock()
+func (cch *cache) update(filePath string, url *url.URL, resp *response) {
+	cch.rmtx.Lock()
+	defer cch.rmtx.Unlock()
 
-	ch.Entries[url.String()] = cacheEntry{
+	cch.Entries[url.String()] = cacheEntry{
 		Path:     filePath,
 		ModTime:  resp.lastMod,
 		ContType: resp.contType,
 	}
 }
 
-func (ch *cache) get(url string) cacheEntry {
-	ch.rmtx.RLock()
-	defer ch.rmtx.RUnlock()
+func (cch *cache) get(url string) cacheEntry {
+	cch.rmtx.RLock()
+	defer cch.rmtx.RUnlock()
 
-	return ch.Entries[url]
+	ce, ok := cch.Entries[url]
+	if !ok {
+		ce = cch.oldEntries[url]
+	}
+
+	return ce
 }

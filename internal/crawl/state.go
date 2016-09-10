@@ -20,7 +20,7 @@ type state struct {
 	Args
 
 	failed bool
-	cache  *cache
+	cache  cache
 
 	mtx    sync.Mutex
 	unused map[string]os.FileInfo
@@ -35,8 +35,6 @@ type state struct {
 func newState(args Args) *state {
 	state := &state{
 		Args: args,
-
-		cache: newCache(),
 
 		unused: map[string]os.FileInfo{},
 		loaded: map[string]*content{},
@@ -77,26 +75,14 @@ func (state *state) loadCache() {
 	_, _, ok := state.claim(c, []string{cachePath})
 	cog.Assert(ok, "failed to claim %s", cachePath)
 
-	f, err := os.Open(state.outputPath(cachePath))
-	if err != nil {
-		if !os.IsNotExist(err) {
-			state.Errorf("[state] failed to load cache state: %v",
-				err)
-		}
-
-		return
-	}
-
-	defer f.Close()
-
-	err = json.NewDecoder(f).Decode(&state.cache)
+	err := loadCache(&state.cache, state.outputPath(cachePath))
 	cog.Must(err, "[state] invalid cache")
 }
 
 func (state *state) saveCache() {
 	f, err := cfs.Create(state.outputPath(cachePath))
 	if err == nil {
-		err = json.NewEncoder(f).Encode(state.cache)
+		err = json.NewEncoder(f).Encode(&state.cache)
 	}
 
 	if err != nil {
