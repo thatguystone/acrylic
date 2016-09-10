@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestCrawlStateInternalQueryStrings(t *testing.T) {
+func TestStateInternalQueryStrings(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
@@ -25,7 +25,7 @@ func TestCrawlStateInternalQueryStrings(t *testing.T) {
 	ct.Contains(index, `href="/page/`)
 }
 
-func TestCrawlStateClaimConflict(t *testing.T) {
+func TestStateClaimConflict(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
@@ -42,7 +42,7 @@ func TestCrawlStateClaimConflict(t *testing.T) {
 	})
 }
 
-func TestCrawlStateDeleteUnused(t *testing.T) {
+func TestStateDeleteUnused(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 

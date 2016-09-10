@@ -14,7 +14,7 @@ import (
 	"github.com/thatguystone/cog/cync"
 )
 
-type crawlState struct {
+type state struct {
 	Args
 
 	failed bool
@@ -29,8 +29,8 @@ type crawlState struct {
 	sema       *cync.Semaphore
 }
 
-func newState(args Args) *crawlState {
-	state := &crawlState{
+func newState(args Args) *state {
+	state := &state{
 		Args: args,
 
 		unused: map[string]os.FileInfo{},
@@ -46,7 +46,7 @@ func newState(args Args) *crawlState {
 }
 
 // Run the full crawl
-func (state *crawlState) crawl() {
+func (state *state) crawl() {
 	state.loadUnused()
 	state.hitEntries()
 
@@ -55,11 +55,11 @@ func (state *crawlState) crawl() {
 	}
 
 	if state.failed {
-		panic("build failed; see previous errors")
+		panic("[crawl] build failed; see previous errors")
 	}
 }
 
-func (state *crawlState) loadUnused() {
+func (state *state) loadUnused() {
 	output := filepath.Clean(state.Output)
 
 	err := filepath.Walk(output,
@@ -71,10 +71,10 @@ func (state *crawlState) loadUnused() {
 
 			return nil
 		})
-	cog.Must(err, "failed to walk existing")
+	cog.Must(err, "[crawl] failed to walk existing")
 }
 
-func (state *crawlState) deleteUnused() {
+func (state *state) deleteUnused() {
 	paths := make([]string, 0, len(state.unused))
 	for p := range state.unused {
 		paths = append(paths, p)
@@ -87,12 +87,14 @@ func (state *crawlState) deleteUnused() {
 		outPath := filepath.Join(state.Output, path)
 		err := os.Remove(outPath)
 		if err != nil {
-			state.Errorf("failed to remove %s from output: %v", path, err)
+			state.Errorf("[crawl] "+
+				"failed to remove %s from output: %v",
+				path, err)
 		}
 	}
 }
 
-func (state *crawlState) setUsed(path string) {
+func (state *state) setUsed(path string) {
 	for len(path) > 1 {
 		delete(state.unused, path)
 		path = filepath.Dir(path)
@@ -100,13 +102,14 @@ func (state *crawlState) setUsed(path string) {
 }
 
 // All crawls have to start someone. This one starts at the entry points.
-func (state *crawlState) hitEntries() {
+func (state *state) hitEntries() {
 	defer state.wg.Wait()
 
 	for _, entry := range state.EntryPoints {
 		c := state.load(entry)
 		if c.typ == contentExternal {
-			state.Errorf("[crawl] entry point `%s` is not an internal URL",
+			state.Errorf("[crawl] "+
+				"entry point `%s` is not an internal URL",
 				entry)
 		}
 	}
@@ -114,7 +117,7 @@ func (state *crawlState) hitEntries() {
 
 // Load a piece of content from the given URL. If the content is already
 // loaded, it returns the existing content.
-func (state *crawlState) load(url string) *content {
+func (state *state) load(url string) *content {
 	state.mtx.Lock()
 	defer state.mtx.Unlock()
 
@@ -128,49 +131,51 @@ func (state *crawlState) load(url string) *content {
 }
 
 // Claim the output path for the given content
-func (state *crawlState) claim(
+func (state *state) claim(
 	c *content,
-	path, impliedPath string) (oc *content, ok bool) {
+	paths []string) (oc *content, oPath string, ok bool) {
 
 	claim := func(path string) bool {
 		oc = state.claims[path]
-		return oc == nil
+		oPath = path
+		return oc == nil || oc == c
 	}
 
 	state.mtx.Lock()
 	defer state.mtx.Unlock()
 
-	path = filepath.Clean(path)
-	impliedPath = filepath.Clean(impliedPath)
+	for i, path := range paths {
+		path = filepath.Clean(path)
+		paths[i] = path
 
-	if !claim(path) || !claim(impliedPath) {
-		return
+		if !claim(path) {
+			return
+		}
 	}
 
-	state.setUsed(path)
-	state.claims[path] = c
-
-	state.setUsed(impliedPath)
-	state.claims[impliedPath] = c
+	for _, path := range paths {
+		state.setUsed(path)
+		state.claims[path] = c
+	}
 
 	ok = true
 	return
 }
 
 // Errorf logs an error to the user and fails the crawl
-func (state *crawlState) Errorf(msg string, args ...interface{}) {
+func (state *state) Errorf(msg string, args ...interface{}) {
 	state.failed = true
 	state.Logf("E: "+msg, args...)
 }
 
 // Logf logs a message
-func (state *crawlState) Logf(msg string, args ...interface{}) {
+func (state *state) Logf(msg string, args ...interface{}) {
 	state.Args.Logf(msg, args...)
 }
 
 // Don't need to go to the network for this. Just route directly into our
 // handler.
-func (state *crawlState) RoundTrip(r *http.Request) (*http.Response, error) {
+func (state *state) RoundTrip(r *http.Request) (*http.Response, error) {
 	w := httptest.NewRecorder()
 
 	// Don't pound the handler: it might be doing image scaling, video
@@ -187,6 +192,6 @@ func (state *crawlState) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // Redirects are disabled. They're handled explicitly by content.
-func (state *crawlState) checkRedirect(*http.Request, []*http.Request) error {
+func (state *state) checkRedirect(*http.Request, []*http.Request) error {
 	return http.ErrUseLastResponse
 }

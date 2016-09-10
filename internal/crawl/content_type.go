@@ -27,6 +27,22 @@ func contentTypeFromMime(mime string) contentType {
 	}
 }
 
+func (ct contentType) newResource() resourcer {
+	switch ct {
+	case contentHTML:
+		return new(resourceHTML)
+
+	case contentCSS:
+		return new(resourceCSS)
+
+	case contentJS, contentBlob:
+		return new(resourceBlob)
+
+	default:
+		return nil
+	}
+}
+
 func (ct contentType) String() string {
 	switch ct {
 	case contentBlob:

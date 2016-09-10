@@ -4,42 +4,37 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"net/http"
+	"os"
 	"regexp"
 )
 
 var reCSSURL = regexp.MustCompile(`url\("?(.*?)"?\)`)
 
-func (c *content) processCSS(resp *http.Response) {
-	proc := processCSS{
-		process: process{
-			content: c,
-		},
-	}
-
-	proc.run(resp)
+type resourceCSS struct {
+	resourceBase
 }
 
-type processCSS struct {
-	process
+func (rsrc *resourceCSS) recheck(resp *response, f *os.File) error {
+	return nil
 }
 
-func (proc *processCSS) run(resp *http.Response) {
+func (rsrc *resourceCSS) process(resp *response, f *os.File) error {
 	r := Minify.Reader("text/css", resp.Body)
 	css, err := ioutil.ReadAll(r)
 	resp.Body.Close()
 
 	if err != nil {
-		proc.state.Errorf("[html] failed to read css from %s: %v", proc, err)
-		return
+		rsrc.state.Errorf("[css] failed to read from %s: %v",
+			resp.Request.URL, err)
+		return nil
 	}
 
 	matches := reCSSURL.FindAllSubmatch(css, -1)
 	for _, match := range matches {
 		url := string(match[1])
-		c := proc.loadRelative(url)
+		c := rsrc.loadRelative(url)
 
-		cURL := c.bustURL()
+		cURL := c.bustedURL()
 		if url != cURL {
 			css = bytes.Replace(css,
 				match[0],
@@ -48,5 +43,6 @@ func (proc *processCSS) run(resp *http.Response) {
 		}
 	}
 
-	proc.saveBytes(css)
+	_, err = f.Write(css)
+	return err
 }

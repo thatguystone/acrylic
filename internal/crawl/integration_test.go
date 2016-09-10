@@ -72,7 +72,7 @@ func (h bytesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(h)
 }
 
-func TestBasic(t *testing.T) {
+func TestIntegrationBasic(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
@@ -121,7 +121,7 @@ func TestBasic(t *testing.T) {
 	ct.fs.FileExists("output/static/img.gif")
 }
 
-func TestExternals(t *testing.T) {
+func TestIntegrationExternals(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
@@ -142,7 +142,7 @@ func TestExternals(t *testing.T) {
 	ct.Contains(index, `http://example.com/EXTERNAL2`)
 }
 
-func TestCaching(t *testing.T) {
+func TestIntegrationCaching(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
@@ -182,7 +182,7 @@ func TestCaching(t *testing.T) {
 	ct.Must.True(hasCached)
 }
 
-func TestCacheBusting(t *testing.T) {
+func TestIntegrationCacheBusting(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 
@@ -205,7 +205,7 @@ func TestCacheBusting(t *testing.T) {
 	ct.Contains(index, `href="/page/"`)
 }
 
-func TestOutputAsCache(t *testing.T) {
+func TestIntegrationOutputAsCache(t *testing.T) {
 	ct := newTest(t)
 	defer ct.exit()
 

@@ -1,14 +1,12 @@
 package crawl
 
 import (
-	"bytes"
 	"fmt"
-	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -17,16 +15,17 @@ import (
 )
 
 type content struct {
-	state *crawlState
+	state *state
 
-	loaded  sync.WaitGroup
-	url     *url.URL
-	isIndex bool
-	typ     contentType
-	lastMod time.Time
+	loaded   sync.WaitGroup
+	url      *url.URL
+	typ      contentType
+	cacheMod time.Time // When existing file was changed
+	lastMod  time.Time
+	rsrc     resourcer
 }
 
-func newContent(state *crawlState, sURL string) *content {
+func newContent(state *state, sURL string) *content {
 	c := &content{
 		state: state,
 	}
@@ -40,7 +39,7 @@ func newContent(state *crawlState, sURL string) *content {
 		c.url = new(url.URL)
 		c.typ = contentExternal
 
-		state.Errorf("[url parse] invalid URL: %s: %v", sURL, err)
+		state.Errorf("[content] invalid URL: %s: %v", sURL, err)
 
 	case c.url.Scheme != "" || c.url.Opaque != "" || c.url.Host != "":
 		c.typ = contentExternal
@@ -62,115 +61,6 @@ func (c *content) waitLoad() {
 	c.loaded.Wait()
 }
 
-// Follow all redirects, and get the final content
-func (c *content) follow() *content {
-	seen := map[*content]struct{}{}
-
-	// It's possible that this content isn't loaded yet
-	c.waitLoad()
-
-	fc := c
-	for fc.typ == contentRedirect {
-		if _, ok := seen[fc]; ok {
-			c.state.Errorf("[content] redirect loop detected starting at %s", c)
-			return fc
-		}
-
-		seen[fc] = struct{}{}
-
-		fc = fc.state.load(fc.url.String())
-		fc.waitLoad()
-	}
-
-	return fc
-}
-
-// Try to claim the output path for this content's exclusive use.
-//
-// In the case of two things that have the same path but different query
-// strings, the first one to claim is the one that will write. The other is
-// simply ignored since it's assumed that two things with the same path are
-// the same thing.
-//
-//
-func (c *content) claim() (string, bool) {
-	path, impliedPath := c.outputPath()
-
-	oc, ok := c.state.claim(c, path, impliedPath)
-	if !ok {
-		oPath, oImpliedPath := oc.outputPath()
-		if path != oPath || impliedPath != oImpliedPath {
-			c.state.Errorf("[content] output conflict: "+
-				"both %s and %s use %s",
-				c, oc, path)
-		}
-	}
-
-	return impliedPath, ok
-}
-
-func (c *content) save(content string) {
-	c.saveBytes([]byte(content))
-}
-
-func (c *content) saveBytes(content []byte) {
-	c.saveReader(bytes.NewReader(content))
-}
-
-func (c *content) saveReader(content io.Reader) {
-	if c.typ == contentExternal {
-		panic(fmt.Errorf("cannot save external content (url=%s)", c))
-	}
-
-	path, ok := c.claim()
-	if !ok {
-		return
-	}
-
-	f, err := cfs.Create(path)
-	defer f.Close()
-
-	if err == nil {
-		_, err = io.Copy(f, content)
-	}
-
-	if err == nil {
-		err = f.Close()
-	}
-
-	if err == nil && !c.lastMod.IsZero() {
-		err = os.Chtimes(path, c.lastMod, c.lastMod)
-	}
-
-	if err != nil {
-		c.state.Errorf("[output] failed to save %s: %v", c, err)
-	}
-}
-
-func (c *content) outputPath() (path, impliedPath string) {
-	if c.isIndex {
-		impliedPath = "index.html"
-	}
-
-	path = filepath.Join(c.state.Output, c.url.Path)
-	impliedPath = filepath.Join(path, impliedPath)
-
-	return
-}
-
-func (c *content) bustURL() string {
-	url := *c.url // Don't modify c's URL
-
-	if !c.lastMod.IsZero() {
-		qs := url.Query()
-		qs.Set("v", fmt.Sprintf("%d", c.lastMod.Unix()))
-
-		url.RawQuery = qs.Encode()
-	}
-
-	return url.String()
-}
-
 // Load the content. This is only used for internal content.
 func (c *content) load() {
 	doned := false
@@ -184,34 +74,22 @@ func (c *content) load() {
 	defer c.state.wg.Done()
 	defer setLoaded()
 
-	outPath, _ := c.outputPath()
-	info, err := os.Stat(outPath)
-	if err == nil {
-		c.lastMod = info.ModTime()
-	}
+	c.updateCacheMod()
 
-	req, err := http.NewRequest("GET", c.url.String(), nil)
-	cog.Must(err, "failed to create new request (how did that happen?)")
-
-	if !c.lastMod.IsZero() {
-		req.Header.Set("If-Modified-Since",
-			c.lastMod.UTC().Format(http.TimeFormat))
-	}
-
-	resp, err := c.state.httpClient.Do(req)
-	if err != nil {
-		c.state.Errorf("[content] failed to load %s: %v", c, err)
+	resp := c.doRequest()
+	if resp == nil {
 		return
 	}
 
 	defer resp.Body.Close()
+
+	recheck := false
 
 	switch resp.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
 		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 
 		url, err := c.url.Parse(resp.Header.Get("Location"))
-
 		// Any errors should already have been filtered out by net/http itself
 		cog.Must(err, "invalid Location header")
 
@@ -221,53 +99,194 @@ func (c *content) load() {
 		return
 
 	case http.StatusNotModified:
-		// The content is up-to-date. Just need to claim it so it doesn't get
-		// deleted
-		c.claim()
-		return
+		// If the content is up-to-date, then need to recheck everything
+		// referenced in the cached content (ie. images).
+		recheck = true
 
 	case http.StatusOK:
 		// Proceed as normal
 
 	default:
-		c.state.Errorf("[content] failed to load %s: status (%d) %s",
+		c.state.Errorf("[content] "+
+			"failed to load %s: status (%d) %s",
 			c, resp.StatusCode, resp.Status)
 		return
 	}
 
-	setLoaded()
-	c.process(resp)
-}
-
-func (c *content) process(resp *http.Response) {
-	lastMod := resp.Header.Get("Last-Modified")
-	t, err := time.Parse(http.TimeFormat, lastMod)
-	if err != nil && lastMod != "" {
-		c.state.Logf("W: [content] invalid Last-Modified header from %s: %v",
-			c, err)
-	} else {
-		c.lastMod = t
-	}
-
-	contType := resp.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(contType)
-	if contType != "" && err != nil {
-		c.state.Errorf("[content] invalid content type at %s: %v", c, err)
+	c.rsrc = c.typ.newResource()
+	if c.rsrc == nil {
 		return
 	}
 
-	c.typ = contentTypeFromMime(mediaType)
+	c.rsrc.init(c.state, c.url)
+	setLoaded()
 
-	switch c.typ {
-	case contentHTML:
-		c.processHTML(resp)
-
-	case contentCSS:
-		c.processCSS(resp)
-
-	case contentJS, contentBlob:
-		c.processBlob(resp)
+	if !c.claim(c.rsrc.pathClaims()) {
+		return
 	}
+
+	path := filepath.Join(c.state.Output, c.rsrc.path())
+
+	err := cfs.CreateParents(path)
+	if err != nil {
+		c.state.Errorf("[content] "+
+			"failed to create parent directories for %s: %v",
+			c, err)
+		return
+	}
+
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		c.state.Errorf("[content] "+
+			"failed to create dest file for %s: %v",
+			c, err)
+		return
+	}
+
+	defer f.Close()
+
+	if recheck {
+		err = c.rsrc.recheck(resp, f)
+	} else {
+		err = c.rsrc.process(resp, f)
+	}
+
+	if err == nil {
+		err = f.Close()
+	}
+
+	if err == nil && !resp.lastMod.IsZero() {
+		err = os.Chtimes(path, resp.lastMod, resp.lastMod)
+	}
+
+	if err != nil {
+		c.state.Errorf("[content] "+
+			"failed to process dest file for %s: %v",
+			c, err)
+		return
+	}
+}
+
+func (c *content) doRequest() *response {
+	req, err := http.NewRequest("GET", c.url.String(), nil)
+	cog.Must(err, "[content] "+
+		"failed to create new request (how did that happen?)")
+
+	if !c.cacheMod.IsZero() {
+		req.Header.Set("If-Modified-Since",
+			c.cacheMod.UTC().Format(http.TimeFormat))
+	}
+
+	resp, err := c.state.httpClient.Do(req)
+	if err != nil {
+		c.state.Errorf("[content] failed to load %s: %v", c, err)
+		return nil
+	}
+
+	wResp := wrapResponse(resp, c.state)
+
+	c.lastMod = wResp.lastMod
+	if wResp.typ != contentBlob {
+		c.typ = wResp.typ
+	}
+
+	return wResp
+}
+
+// Brute-force find a path that this resource might be put at, and get its mod
+// time. For a site that builds without errors, this should work. For a site
+// with conflicting resources, it might pick the wrong file, but at that
+// point, it doesn't matter.
+func (c *content) updateCacheMod() {
+	paths := possibleResourcePaths(c.state, c.url)
+
+	for _, path := range paths {
+		info, err := os.Stat(filepath.Join(c.state.Output, path))
+		switch {
+		case err == nil && !info.IsDir():
+			c.cacheMod = info.ModTime()
+			return
+
+		case err != nil && !os.IsNotExist(err):
+			c.state.Errorf("[content] failed to stat %s: %v", path, err)
+		}
+	}
+
+	return
+}
+
+// Try to claim the output path for this content's exclusive use.
+//
+// In the case of two things that have the same path claims but different
+// query strings, the first one to claim is the one that will write. The other
+// is simply ignored since it's assumed that two things with the same path
+// claims are the same thing.
+func (c *content) claim(paths []string) bool {
+	oc, conflict, ok := c.state.claim(c, paths)
+	if ok {
+		return true
+	}
+
+	oPaths := oc.rsrc.pathClaims()
+
+	sort.Sort(sort.StringSlice(paths))
+	sort.Sort(sort.StringSlice(oPaths))
+
+	fail := len(paths) != len(oPaths)
+	if !fail {
+		for i, path := range paths {
+			if filepath.Clean(path) != filepath.Clean(oPaths[i]) {
+				fail = true
+				break
+			}
+		}
+	}
+
+	if fail {
+		c.state.Errorf("[content] "+
+			"output conflict: both %s and %s use %s",
+			c, oc, conflict)
+	}
+
+	return false
+}
+
+// Follow all redirects, and gets the final content
+func (c *content) follow() *content {
+	seen := map[*content]struct{}{}
+
+	// It's possible that this content isn't loaded yet
+	c.waitLoad()
+
+	fc := c
+	for fc.typ == contentRedirect {
+		if _, ok := seen[fc]; ok {
+			c.state.Errorf("[content] "+
+				"redirect loop detected, starts at %s",
+				c)
+			return fc
+		}
+
+		seen[fc] = struct{}{}
+
+		fc = fc.state.load(fc.url.String())
+		fc.waitLoad()
+	}
+
+	return fc
+}
+
+func (c *content) bustedURL() string {
+	url := *c.url // Don't modify c's URL
+
+	if !c.lastMod.IsZero() {
+		qs := url.Query()
+		qs.Set("v", fmt.Sprintf("%d", c.lastMod.Unix()))
+
+		url.RawQuery = qs.Encode()
+	}
+
+	return url.String()
 }
 
 func (c *content) String() string {
