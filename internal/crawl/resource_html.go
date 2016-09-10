@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/thatguystone/cog"
 )
 
 type resourceHTML struct {
@@ -38,8 +39,16 @@ func (rsrc resourceHTML) isIndex() bool {
 	return strings.HasSuffix(rsrc.url.Path, "/")
 }
 
+func (rsrc *resourceHTML) recheck(r io.Reader) {
+	rsrc.processHTML(r)
+}
+
 func (rsrc *resourceHTML) process(resp *response) io.Reader {
 	r := Minify.Reader("text/html", resp.Body)
+	return rsrc.processHTML(r)
+}
+
+func (rsrc *resourceHTML) processHTML(r io.Reader) io.Reader {
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
 		rsrc.state.Errorf("[html] failed to render page %s: %v",
@@ -54,11 +63,7 @@ func (rsrc *resourceHTML) process(resp *response) io.Reader {
 	doc.Find("source[href]").Each(rsrc.updateAttr("href"))
 
 	html, err := doc.Html()
-	if err != nil {
-		rsrc.state.Errorf("[html] failed to generate html for %s: %v",
-			rsrc.url, err)
-		return nil
-	}
+	cog.Must(err, "[html] failed to generate for %s. wtf?", rsrc.url)
 
 	return strings.NewReader(html)
 }

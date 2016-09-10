@@ -9,8 +9,8 @@ import (
 // Response provides additional information about the wrapped response
 type response struct {
 	*http.Response
-	typ     contentType
-	lastMod time.Time
+	contType string
+	lastMod  time.Time
 }
 
 func wrapResponse(resp *http.Response, state *state) *response {
@@ -55,5 +55,5 @@ func (resp *response) updateContentType(state *state) {
 		}
 	}
 
-	resp.typ = contentTypeFromMime(mediaType)
+	resp.contType = mediaType
 }

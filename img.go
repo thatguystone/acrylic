@@ -89,7 +89,6 @@ func (h imgHandler) scale(
 
 	// If the internal cache is outdated, update before serving
 	if !ok || !srcStat.ModTime().Equal(dstStat.ModTime()) {
-
 		err := img.scale(dstPath)
 		if err != nil {
 			h.errorf(w, err, "failed to scale img")

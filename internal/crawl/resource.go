@@ -16,26 +16,15 @@ type resourcer interface {
 	// Get the final path that this resource writes to
 	path() string
 
+	// The server said the file hasn't changed, but it still might contain
+	// resources that need to be claimed so that they're not deleted. Take
+	// care of it.
+	recheck(r io.Reader)
+
 	// This is a new resource. Process it and return some content for writing.
 	// If nil is returned, no file is created (and any existing file is left
 	// untouched).
 	process(resp *response) io.Reader
-}
-
-// Get all possible paths that the given URL might map to
-func possibleResourcePaths(state *state, url *url.URL) (paths []string) {
-	rsrcs := []resourcer{
-		new(resourceHTML),
-		new(resourceCSS),
-		new(resourceBlob),
-	}
-
-	for _, rsrc := range rsrcs {
-		rsrc.init(state, url)
-		paths = append(paths, rsrc.pathClaims()...)
-	}
-
-	return
 }
 
 type resourceBase struct {

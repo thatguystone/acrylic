@@ -14,14 +14,20 @@ type resourceCSS struct {
 	resourceBase
 }
 
+func (rsrc *resourceCSS) recheck(r io.Reader) {
+	rsrc.processCSS(r)
+}
+
 func (rsrc *resourceCSS) process(resp *response) io.Reader {
 	r := Minify.Reader("text/css", resp.Body)
-	css, err := ioutil.ReadAll(r)
-	resp.Body.Close()
+	return rsrc.processCSS(r)
+}
 
+func (rsrc *resourceCSS) processCSS(r io.Reader) io.Reader {
+	css, err := ioutil.ReadAll(r)
 	if err != nil {
 		rsrc.state.Errorf("[css] failed to read from %s: %v",
-			resp.Request.URL, err)
+			rsrc.url, err)
 		return nil
 	}
 

@@ -1,6 +1,7 @@
 package crawl
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/thatguystone/cog"
+	"github.com/thatguystone/cog/cfs"
 	"github.com/thatguystone/cog/cync"
 )
 
@@ -18,6 +20,7 @@ type state struct {
 	Args
 
 	failed bool
+	cache  *cache
 
 	mtx    sync.Mutex
 	unused map[string]os.FileInfo
@@ -33,6 +36,8 @@ func newState(args Args) *state {
 	state := &state{
 		Args: args,
 
+		cache: newCache(),
+
 		unused: map[string]os.FileInfo{},
 		loaded: map[string]*content{},
 		claims: map[string]*content{},
@@ -47,15 +52,56 @@ func newState(args Args) *state {
 
 // Run the full crawl
 func (state *state) crawl() {
-	state.loadUnused()
-	state.hitEntries()
+	steps := []func(){
+		state.loadCache,
+		state.loadUnused,
+		state.hitEntries,
+		state.deleteUnused,
+		state.saveCache,
+	}
 
-	if !state.failed {
-		state.deleteUnused()
+	for _, step := range steps {
+		step()
+		if state.failed {
+			break
+		}
 	}
 
 	if state.failed {
 		panic("[crawl] build failed; see previous errors")
+	}
+}
+
+func (state *state) loadCache() {
+	c := newContent(state, "acrylic-state://")
+	_, _, ok := state.claim(c, []string{cachePath})
+	cog.Assert(ok, "failed to claim %s", cachePath)
+
+	f, err := os.Open(state.outputPath(cachePath))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			state.Errorf("[state] failed to load cache state: %v",
+				err)
+		}
+
+		return
+	}
+
+	defer f.Close()
+
+	err = json.NewDecoder(f).Decode(&state.cache)
+	cog.Must(err, "[state] invalid cache")
+}
+
+func (state *state) saveCache() {
+	f, err := cfs.Create(state.outputPath(cachePath))
+	if err == nil {
+		err = json.NewEncoder(f).Encode(state.cache)
+	}
+
+	if err != nil {
+		state.Errorf("[state] failed to write cache state: %v",
+			err)
 	}
 }
 
@@ -64,6 +110,10 @@ func (state *state) loadUnused() {
 
 	err := filepath.Walk(output,
 		func(path string, info os.FileInfo, err error) error {
+			if err != nil && !os.IsNotExist(err) {
+				return err
+			}
+
 			path = strings.TrimPrefix(path, output)
 			if path != "" {
 				state.unused[path] = info
@@ -71,7 +121,9 @@ func (state *state) loadUnused() {
 
 			return nil
 		})
-	cog.Must(err, "[crawl] failed to walk existing")
+	if err != nil {
+		state.Errorf("[crawl] failed to walk existing files: %v", err)
+	}
 }
 
 func (state *state) deleteUnused() {

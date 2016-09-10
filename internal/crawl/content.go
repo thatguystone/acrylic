@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/thatguystone/cog"
 	"github.com/thatguystone/cog/cfs"
@@ -18,17 +17,17 @@ import (
 type content struct {
 	state *state
 
-	loaded   sync.WaitGroup
-	url      *url.URL
-	typ      contentType
-	cacheMod time.Time // When existing file was changed
-	lastMod  time.Time
-	rsrc     resourcer
+	loaded sync.WaitGroup
+	url    *url.URL
+	typ    contentType
+	cached cacheEntry
+	rsrc   resourcer
 }
 
 func newContent(state *state, sURL string) *content {
 	c := &content{
-		state: state,
+		state:  state,
+		cached: state.cache.get(sURL),
 	}
 
 	var err error
@@ -75,14 +74,14 @@ func (c *content) load() {
 	defer c.state.wg.Done()
 	defer setLoaded()
 
-	c.updateCacheMod()
-
 	resp := c.doRequest()
 	if resp == nil {
 		return
 	}
 
 	defer resp.Body.Close()
+
+	recheck := false
 
 	switch resp.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
@@ -98,8 +97,12 @@ func (c *content) load() {
 		return
 
 	case http.StatusNotModified:
-		// If the content is up-to-date, then nothing to do here
-		return
+		// If the content is up-to-date, it only needs to be rechecked so that
+		// any of its dependent resources are claimed
+		recheck = true
+
+		resp.contType = c.cached.ContType
+		resp.lastMod = c.cached.ModTime
 
 	case http.StatusOK:
 		// Proceed as normal
@@ -111,6 +114,7 @@ func (c *content) load() {
 		return
 	}
 
+	c.typ = contentTypeFromMime(resp.contType)
 	c.rsrc = c.typ.newResource()
 	if c.rsrc == nil {
 		return
@@ -123,12 +127,36 @@ func (c *content) load() {
 		return
 	}
 
+	path := c.rsrc.path()
+	c.state.cache.update(path, c.url, resp)
+
+	outPath := c.state.outputPath(path)
+	if recheck {
+		c.recheck(outPath)
+	} else {
+		c.process(outPath, resp)
+	}
+}
+
+func (c *content) recheck(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		c.state.Errorf("[content] failed to recheck %s: %v",
+			c, err)
+		return
+	}
+
+	defer f.Close()
+
+	c.rsrc.recheck(f)
+}
+
+func (c *content) process(path string, resp *response) {
 	r := c.rsrc.process(resp)
 	if r == nil {
 		return
 	}
 
-	path := c.state.outputPath(c.rsrc.path())
 	f, err := cfs.Create(path)
 	if err == nil {
 		defer f.Close()
@@ -137,10 +165,6 @@ func (c *content) load() {
 
 	if err == nil {
 		err = f.Close()
-	}
-
-	if err == nil && !resp.lastMod.IsZero() {
-		err = os.Chtimes(path, resp.lastMod, resp.lastMod)
 	}
 
 	if err != nil {
@@ -155,9 +179,9 @@ func (c *content) doRequest() *response {
 	cog.Must(err, "[content] "+
 		"failed to create new request (how did that happen?)")
 
-	if !c.cacheMod.IsZero() {
+	if !c.cached.ModTime.IsZero() {
 		req.Header.Set("If-Modified-Since",
-			c.cacheMod.UTC().Format(http.TimeFormat))
+			c.cached.ModTime.UTC().Format(http.TimeFormat))
 	}
 
 	resp, err := c.state.httpClient.Do(req)
@@ -166,36 +190,7 @@ func (c *content) doRequest() *response {
 		return nil
 	}
 
-	wResp := wrapResponse(resp, c.state)
-
-	c.lastMod = wResp.lastMod
-	if wResp.typ != contentBlob {
-		c.typ = wResp.typ
-	}
-
-	return wResp
-}
-
-// Brute-force find a path that this resource might be put at, and get its mod
-// time. For a site that builds without errors, this should work. For a site
-// with conflicting resources, it might pick the wrong file, but at that
-// point, it doesn't matter.
-func (c *content) updateCacheMod() {
-	paths := possibleResourcePaths(c.state, c.url)
-
-	for _, path := range paths {
-		info, err := os.Stat(c.state.outputPath(path))
-		switch {
-		case err == nil && !info.IsDir():
-			c.cacheMod = info.ModTime()
-			return
-
-		case err != nil && !os.IsNotExist(err):
-			c.state.Errorf("[content] failed to stat %s: %v", path, err)
-		}
-	}
-
-	return
+	return wrapResponse(resp, c.state)
 }
 
 // Try to claim the output path for this content's exclusive use.

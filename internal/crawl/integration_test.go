@@ -57,6 +57,7 @@ type testHandler struct {
 	handler http.Handler
 	fn      func(http.ResponseWriter, *http.Request)
 	str     string
+	bytes   []byte
 }
 
 func (ct crawlTest) mux(handlers ...testHandler) *http.ServeMux {
@@ -72,6 +73,9 @@ func (ct crawlTest) mux(handlers ...testHandler) *http.ServeMux {
 
 		case h.str != "":
 			mux.Handle(h.path, stringHandler(h.str))
+
+		case len(h.bytes) > 0:
+			mux.Handle(h.path, bytesHandler(h.bytes))
 
 		default:
 			panic(fmt.Errorf("missing handler at %s", h.path))

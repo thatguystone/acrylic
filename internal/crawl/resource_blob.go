@@ -10,6 +10,8 @@ type resourceBlob struct {
 	resourceBase
 }
 
+func (rsrc resourceBlob) recheck(r io.Reader) {}
+
 func (rsrc resourceBlob) process(resp *response) io.Reader {
 	// The client might use the build directory as a cache, so be sure to
 	// check that the file actually needs to be updated before going through

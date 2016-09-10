@@ -2,8 +2,62 @@ package crawl
 
 import (
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 )
+
+func TestContentRecheck(t *testing.T) {
+	ct := newTest(t)
+	defer ct.exit()
+
+	lastMod := time.Now()
+
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			fn: func(w http.ResponseWriter, r *http.Request) {
+				http.ServeContent(w, r,
+					"/", lastMod,
+					strings.NewReader(`<!DOCTYPE html>
+						<link href="/static/all.css" rel="stylesheet">
+						<img src="/static/img-html.gif">
+						`))
+			},
+		},
+		testHandler{
+			path: "/static/all.css",
+			fn: func(w http.ResponseWriter, r *http.Request) {
+				http.ServeContent(w, r,
+					"all.css", lastMod,
+					strings.NewReader(`
+						html {
+							background: url(/static/img-css.gif);
+						}`))
+			},
+		},
+		testHandler{
+			path:  "/static/img-html.gif",
+			bytes: gifBin,
+		},
+		testHandler{
+			path:  "/static/img-css.gif",
+			bytes: gifBin,
+		})
+
+	for i := 0; i < 3; i++ {
+		ct.Logf("------- %d", i)
+
+		ct.NotPanics(func() {
+			ct.run(mux)
+		})
+
+		ct.fs.FileExists("output/index.html")
+		ct.fs.FileExists("output/static/all.css")
+		ct.fs.FileExists("output/static/img-html.gif")
+		ct.fs.FileExists("output/static/img-css.gif")
+	}
+}
 
 func TestContentOpaqueURL(t *testing.T) {
 	ct := newTest(t)
@@ -20,8 +74,8 @@ func TestContentOpaqueURL(t *testing.T) {
 		ct.run(mux)
 	})
 
-	css := ct.fs.SReadFile("output/index.html")
-	ct.Contains(css, `href="mailto:a@stoney.io"`)
+	index := ct.fs.SReadFile("output/index.html")
+	ct.Contains(index, `href="mailto:a@stoney.io"`)
 }
 
 func TestContentInvalidEntryURL(t *testing.T) {
@@ -122,6 +176,7 @@ func TestContentInvalidLastModified(t *testing.T) {
 		testHandler{
 			path: "/",
 			fn: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/html")
 				w.Header().Set("Last-Modified", "What time is it?!")
 				w.WriteHeader(http.StatusOK)
 			},

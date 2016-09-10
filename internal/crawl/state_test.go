@@ -69,3 +69,20 @@ func TestStateDeleteUnused(t *testing.T) {
 
 	ct.fs.NotFileExists("output/img.gif")
 }
+
+func TestStateCorruptCache(t *testing.T) {
+	ct := newTest(t)
+	defer ct.exit()
+
+	ct.fs.WriteFile("output/"+cachePath, gifBin)
+
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			str:  `<!DOCTYPE html>`,
+		})
+
+	ct.Panics(func() {
+		ct.run(mux)
+	})
+}
