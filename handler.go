@@ -48,7 +48,7 @@ func (h handler) checkModified(
 	}
 
 	t, err := time.Parse(http.TimeFormat, r.Header.Get("If-Modified-Since"))
-	if err == nil && lastMod.Before(t.Add(1*time.Second)) {
+	if err == nil && lastMod.Before(t.Add(time.Second)) {
 		w.Header().Del("Content-Type")
 		w.Header().Del("Content-Length")
 		w.WriteHeader(http.StatusNotModified)
