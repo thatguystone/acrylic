@@ -44,8 +44,6 @@ func (resp *response) updateLastModified(state *state) {
 func (resp *response) updateContentType(state *state) {
 	mediaType := resp.Header.Get("Content-Type")
 
-	state.Logf("[resp] %s", mediaType)
-
 	if mediaType != "" {
 		var err error
 		mediaType, _, err = mime.ParseMediaType(mediaType)
