@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +58,37 @@ func TestContentRecheck(t *testing.T) {
 		ct.fs.FileExists("output/static/img-html.gif")
 		ct.fs.FileExists("output/static/img-css.gif")
 	}
+}
+
+func TestContentOutputDeleted(t *testing.T) {
+	ct := newTest(t)
+	defer ct.exit()
+
+	lastMod := time.Now().Add(-time.Hour)
+
+	mux := ct.mux(
+		testHandler{
+			path: "/",
+			fn: func(w http.ResponseWriter, r *http.Request) {
+				http.ServeContent(w, r,
+					"/", lastMod,
+					strings.NewReader(`<!DOCTYPE html> OK`))
+			},
+		})
+
+	ct.NotPanics(func() {
+		ct.run(mux)
+	})
+
+	err := os.Remove(ct.fs.Path("output/index.html"))
+	ct.Must.Nil(err)
+
+	ct.NotPanics(func() {
+		ct.run(mux)
+	})
+
+	index := ct.fs.SReadFile("output/index.html")
+	ct.Contains(index, `OK`)
 }
 
 func TestContentOpaqueURL(t *testing.T) {
