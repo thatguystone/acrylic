@@ -2,6 +2,7 @@ package acrylic
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -49,21 +50,24 @@ func setWebpackEnv(host, port string) {
 }
 
 type webpackHandler struct {
+	handler
 	asset string
 }
 
 func newWebpackHandler(asset string) *webpackHandler {
-	return &webpackHandler{
+	c := &webpackHandler{
 		asset: asset,
 	}
-}
 
-func (h *webpackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// I mean, why not start as early as possible?
 	if webpackRevProxy != nil {
-		webpackRevProxy.ServeHTTP(w, r)
-		return
+		go c.compile()
 	}
 
+	return c
+}
+
+func (h *webpackHandler) compile() {
 	webpackOnce.Do(func() {
 		start := time.Now()
 		defer func() {
@@ -76,14 +80,33 @@ func (h *webpackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			webpackErr = fmt.Errorf("%v:\n%s",
 				err,
 				stringc.Indent(string(out), "    "))
-			log.Printf("E: [webpack] %v", webpackErr)
 		}
 	})
+}
 
-	if webpackErr != nil {
-		http.Error(w, webpackErr.Error(), http.StatusInternalServerError)
+func (h *webpackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if webpackRevProxy != nil {
+		webpackRevProxy.ServeHTTP(w, r)
 		return
 	}
 
-	http.ServeFile(w, r, h.asset)
+	h.compile()
+
+	switch {
+	case webpackErr != nil:
+		h.errorf(w, webpackErr, "[webpack] compile failed")
+
+	case h.needsBusted(r):
+		body, err := ioutil.ReadFile(h.asset)
+		if err != nil {
+			h.errorf(w, err, "[webpack] failed to read file")
+		} else {
+			h.handler.redirectBusted(
+				w, r,
+				*r.URL, h.hashBuster(body))
+		}
+
+	default:
+		http.ServeFile(w, r, h.asset)
+	}
 }

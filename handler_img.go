@@ -28,23 +28,19 @@ func newImgHandler(s *Site, root string) imgHandler {
 }
 
 func (h imgHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	upath := r.URL.Path
-	if !strings.HasPrefix(upath, "/") {
-		upath = "/" + upath
-		r.URL.Path = upath
+	if !strings.HasPrefix(r.URL.Path, "/") {
+		r.URL.Path = "/" + r.URL.Path
 	}
 
 	err := r.ParseForm()
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "invalid query: %v", err)
+		h.invalidf(w, err, "[img] invalid args")
 		return
 	}
 
-	im, err := newImg(filepath.Join(h.root, upath), r.Form)
+	im, err := newImg(filepath.Join(h.root, r.URL.Path), r.Form)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "invalid args: %v", err)
+		h.invalidf(w, err, "[img] invalid args")
 		return
 	}
 
@@ -53,25 +49,16 @@ func (h imgHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !im.isFinalPath || (!isDebug() && r.FormValue(CacheBustParam) == "") {
-		h.redirect(w, r, srcStat, im)
-	} else {
+	switch {
+	case !im.isFinalPath || h.needsBusted(r):
+		h.handler.redirectBusted(
+			w, r,
+			url.URL{Path: "./" + im.scaledName()},
+			fmt.Sprintf("%d", srcStat.ModTime().Unix()))
+
+	default:
 		h.scale(w, r, srcStat, im)
 	}
-}
-
-func (h imgHandler) redirect(
-	w http.ResponseWriter, r *http.Request,
-	srcStat os.FileInfo, im *img) {
-
-	url := url.URL{
-		Path: "./" + im.scaledName(),
-		RawQuery: fmt.Sprintf("%s=%d",
-			CacheBustParam,
-			srcStat.ModTime().Unix()),
-	}
-
-	http.Redirect(w, r, url.String(), http.StatusFound)
 }
 
 func (h imgHandler) scale(

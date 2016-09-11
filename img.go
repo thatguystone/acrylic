@@ -102,9 +102,9 @@ func (im *img) parseName(name string) (err error) {
 	return
 }
 
-func (im *img) parseForm(form url.Values) (parsedNone bool, err error) {
+func (im *img) parseForm(form url.Values) (hasQSArgs bool, err error) {
 	parsedAny, err := imgArgs.parse(im, form)
-	parsedNone = !parsedAny
+	hasQSArgs = !parsedAny
 
 	im.w = im.oW * im.density
 	im.h = im.oH * im.density
