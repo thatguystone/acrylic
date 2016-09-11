@@ -41,36 +41,46 @@ func (h imgHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	srcPath := filepath.Join(h.root, upath)
-
-	im, err := newImg(srcPath, r.Form)
+	im, err := newImg(filepath.Join(h.root, upath), r.Form)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "invalid args: %v", err)
 		return
 	}
 
-	if !im.isFinalPath || (!isDebug() && r.FormValue(CacheBustParam) == "") {
-		h.redirect(w, r, srcPath, r.URL.Path)
-	} else {
-		// Provides Last-Modified caching
-		h.fileServer.ServeHTTP(w, r)
-	}
-}
-
-func (h imgHandler) scale(
-	w http.ResponseWriter, r *http.Request,
-	srcPath string, im img) {
-
-	srcStat, ok, _ := h.statFile(srcPath, w, true)
+	srcStat, ok, _ := h.statFile(im.srcPath(), w, true)
 	if !ok {
 		return
 	}
 
-	scaledName := im.scaledName()
+	if !im.isFinalPath || (!isDebug() && r.FormValue(CacheBustParam) == "") {
+		h.redirect(w, r, srcStat, im)
+	} else {
+		h.scale(w, r, srcStat, im)
+	}
+}
+
+func (h imgHandler) redirect(
+	w http.ResponseWriter, r *http.Request,
+	srcStat os.FileInfo, im *img) {
+
+	url := url.URL{
+		Path: "./" + im.scaledName(),
+		RawQuery: fmt.Sprintf("%s=%d",
+			CacheBustParam,
+			srcStat.ModTime().Unix()),
+	}
+
+	http.Redirect(w, r, url.String(), http.StatusFound)
+}
+
+func (h imgHandler) scale(
+	w http.ResponseWriter, r *http.Request,
+	srcStat os.FileInfo, im *img) {
+
 	dstPath := filepath.Join(h.s.Output,
 		filepath.Dir(r.URL.String()),
-		scaledName)
+		im.scaledName())
 
 	dstStat, ok, err := h.statFile(dstPath, w, false)
 	if err != nil {
@@ -92,24 +102,6 @@ func (h imgHandler) scale(
 		}
 	}
 
-	h.redirect(w, r, srcPath, "./"+scaledName)
-}
-
-func (h imgHandler) redirect(
-	w http.ResponseWriter, r *http.Request,
-	srcPath string, toPath string) {
-
-	srcStat, ok, _ := h.statFile(srcPath, w, true)
-	if !ok {
-		return
-	}
-
-	url := url.URL{
-		Path: toPath,
-		RawQuery: fmt.Sprintf("%s=%d",
-			CacheBustParam,
-			srcStat.ModTime().Unix()),
-	}
-
-	http.Redirect(w, r, url.String(), http.StatusFound)
+	// Provides Last-Modified caching
+	h.fileServer.ServeHTTP(w, r)
 }

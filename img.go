@@ -65,6 +65,12 @@ func (im *img) needsScale() bool {
 		im.density > 1
 }
 
+func (im *img) srcPath() string {
+	return filepath.Join(
+		im.src, "..",
+		fmt.Sprintf("%s%s", im.srcBase, im.srcExt))
+}
+
 func (im *img) scaledName() string {
 	args := imgArgs.format(im)
 	colon := ":"
@@ -110,7 +116,7 @@ func (im *img) scale(dstPath string) error {
 	err := cfs.CreateParents(dstPath)
 
 	if err == nil {
-		args := append(imgArgs.cmdArgs(im), dstPath)
+		args := append(imgArgs.cmdArgs(im), im.srcPath(), dstPath)
 
 		cmd := exec.Command("convert", args...)
 		cmd.Stdout = os.Stdout
