@@ -44,7 +44,7 @@ func (h imgHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	srcStat, ok, _ := h.statFile(im.srcPath(), w, true)
+	srcStat, ok, _ := h.statFile(im.srcPath, w, true)
 	if !ok {
 		return
 	}
@@ -53,7 +53,7 @@ func (h imgHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case !im.isFinalPath || h.needsBusted(r):
 		h.handler.redirectBusted(
 			w, r,
-			url.URL{Path: "./" + im.scaledName()},
+			url.URL{Path: "./" + im.resolvedName},
 			fmt.Sprintf("%d", srcStat.ModTime().Unix()))
 
 	default:
@@ -67,7 +67,7 @@ func (h imgHandler) scale(
 
 	dstPath := filepath.Join(h.s.Output,
 		filepath.Dir(r.URL.String()),
-		im.scaledName())
+		im.resolvedName)
 
 	dstStat, ok, err := h.statFile(dstPath, w, false)
 	if err != nil {

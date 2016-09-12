@@ -3,134 +3,42 @@ package acrylic
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
-type imgArgsSlice []imgArg
+type imgArgsNS struct{}
 
-// This could be an interface, but doing that makes the code REALLY verbose
-type imgArg struct {
-	name   string
-	parse  func(im *img, val string) error
-	format func(im *img) string
-}
+var imgArgs = imgArgsNS{}
 
-// All known arguments, in a normalized order that will produce consistent
-// names
-var imgArgs = imgArgsSlice{
-	imgArg{
-		name: "w",
-		parse: func(im *img, val string) (err error) {
-			im.oW, err = imgIntArg(val)
-			return
-		},
-		format: func(im *img) string {
-			if im.w == 0 {
-				return ""
-			}
+func (ia imgArgsNS) parseNameArgs(im *img, trailer string) (err error) {
+	args := strings.Split(trailer, ".")
+	if len(args) == 1 && args[0] == "" {
+		return fmt.Errorf("missing name args")
+	}
 
-			return strconv.Itoa(im.w)
-		},
-	},
-	imgArg{
-		name: "h",
-		parse: func(im *img, val string) (err error) {
-			im.oH, err = imgIntArg(val)
-			return
-		},
-		format: func(im *img) string {
-			if im.h == 0 {
-				return ""
-			}
+	// If the last arg doesn't look like a k/v pair, it's probably the new img
+	// extension
+	n := len(args) - 1
+	last := args[n]
+	if !strings.Contains(last, "=") {
+		args[n] = fmt.Sprintf("dstExt=%s", last)
+	}
 
-			return strconv.Itoa(im.h)
-		},
-	},
-	imgArg{
-		name: "c",
-		parse: func(im *img, val string) (err error) {
-			im.crop = val != ""
-			return
-		},
-		format: func(im *img) string {
-			if !im.crop {
-				return ""
-			}
-
-			return "t"
-		},
-	},
-	imgArg{
-		name: "q",
-		parse: func(im *img, val string) (err error) {
-			im.quality, err = imgIntArg(val)
-			if err == nil && im.quality == 0 {
-				im.quality = 100
-			}
-			return
-		},
-		format: func(im *img) string {
-			if im.quality == 100 {
-				return ""
-			}
-
-			return strconv.Itoa(im.quality)
-		},
-	},
-	imgArg{
-		name: "d",
-		parse: func(im *img, val string) (err error) {
-			im.density, err = imgIntArg(val)
-			if err == nil && im.density == 0 {
-				im.density = 1
-			}
-
-			return
-		},
-		format: func(im *img) string {
-			// Density just causes W and H to be scaled
-			return ""
-		},
-	},
-	imgArg{
-		name: "srcExt",
-		parse: func(im *img, val string) (err error) {
-			if !strings.HasPrefix(val, ".") {
-				val = "." + val
-			}
-
-			im.srcExt = val
-
-			return
-		},
-		format: func(im *img) string {
-			if im.srcExt == im.dstExt {
-				return ""
-			}
-
-			return im.srcExt
-		},
-	},
-}
-
-func (ih imgArgsSlice) parse(
-	im *img,
-	args url.Values) (parsedAny bool, err error) {
-
-	for _, arg := range ih {
-		val := args.Get(arg.name)
-		if val == "" {
+	for _, arg := range args {
+		if arg == "" {
 			continue
 		}
 
-		parsedAny = true
+		parts := strings.Split(arg, "=")
+		if len(parts) != 2 {
+			err = fmt.Errorf("invalid arg: %s", arg)
+			return
+		}
 
-		err = arg.parse(im, val)
+		_, err = ia.parseOne(im, parts[0], parts[1])
 		if err != nil {
-			err = errors.Wrapf(err, "invalid %s", arg.name)
 			return
 		}
 	}
@@ -138,23 +46,122 @@ func (ih imgArgsSlice) parse(
 	return
 }
 
-func (ih imgArgsSlice) format(im *img) (args string) {
-	for _, arg := range ih {
-		val := arg.format(im)
+func (ia imgArgsNS) parseForm(
+	im *img,
+	form url.Values) (usedAny bool, err error) {
 
-		if val != "" {
-			// QueryEscape(): though it's part of the path, it's parsed with
-			// ParseQuery, so just keep things consistent.
-			args += fmt.Sprintf("%s=%s;", arg.name, url.QueryEscape(val))
+	for k := range form {
+		used, err := ia.parseOne(im, k, form.Get(k))
+		if err != nil {
+			return false, err
 		}
-	}
 
-	args = strings.Trim(args, ";")
+		usedAny = usedAny || used
+	}
 
 	return
 }
 
-func (ih imgArgsSlice) cmdArgs(im *img) (args []string) {
+func (ia imgArgsNS) parseOne(im *img, k, v string) (used bool, err error) {
+	// An empty arg is stupid, but not an error. Just ignore it.
+	if v == "" {
+		return
+	}
+
+	used = true
+	switch k {
+	case "w":
+		im.oW, err = ia.intArg(v)
+
+	case "h":
+		im.oH, err = ia.intArg(v)
+
+	case "c":
+		im.crop = true
+
+	case "q":
+		im.quality, err = ia.intArg(v)
+		if err == nil && im.quality == 0 {
+			im.quality = 100
+		}
+
+	case "d":
+		im.density, err = ia.intArg(v)
+		if err == nil && im.density == 0 {
+			im.density = 1
+		}
+
+	case "dstExt":
+		im.dstExt = strings.Trim(v, ".")
+
+	default:
+		used = false
+	}
+
+	return
+}
+
+// To be called after _all_ parsing operations are complete.
+func (ia imgArgsNS) postParse(im *img) {
+	im.w = im.oW * im.density
+	im.h = im.oH * im.density
+
+	if im.w == 0 && im.h == 0 {
+		im.crop = false
+	}
+
+	ext := "." + im.dstExt
+	if ext == "." || ext == filepath.Ext(im.srcPath) {
+		ext = ""
+	}
+
+	im.dstExt = ext
+}
+
+func (ia imgArgsNS) format(im *img) (args string) {
+	var s []string
+
+	add := func(k, v string) {
+		s = append(s, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	if im.w != 0 {
+		add("w", strconv.Itoa(im.w))
+	}
+
+	if im.h != 0 {
+		add("h", strconv.Itoa(im.h))
+	}
+
+	if im.crop {
+		add("c", "t")
+	}
+
+	if im.quality != 100 {
+		add("q", strconv.Itoa(im.quality))
+	}
+
+	if len(s) > 0 || im.dstExt != "" {
+		// If there are no args, append a blank one so that there's always a
+		// "." before the dstExt
+		if len(s) == 0 {
+			s = append(s, "")
+		}
+
+		ext := im.dstExt
+		if ext == "" {
+			ext = filepath.Ext(im.srcPath)
+		}
+
+		s = append(s, strings.Trim(ext, "."))
+	}
+
+	args = strings.Join(s, ".")
+
+	return
+}
+
+func (ia imgArgsNS) cmdArgs(im *img) (args []string) {
 	dims := ""
 
 	// Use something like '400x' to scale to a width of 400
@@ -168,17 +175,16 @@ func (ih imgArgsSlice) cmdArgs(im *img) (args []string) {
 		dims += strconv.Itoa(im.h)
 	}
 
-	scaleDims := dims
-
-	if im.crop {
-		scaleDims += "^"
-
-		args = append(args,
-			"-gravity", "center",
-			"-extent", dims)
-	}
-
 	if dims != "x" {
+		scaleDims := dims
+		if im.crop {
+			scaleDims += "^"
+
+			args = append(args,
+				"-gravity", "center",
+				"-extent", dims)
+		}
+
 		args = append(args,
 			"-scale", scaleDims)
 	}
@@ -191,7 +197,7 @@ func (ih imgArgsSlice) cmdArgs(im *img) (args []string) {
 	return
 }
 
-func imgIntArg(val string) (int, error) {
+func (ia imgArgsNS) intArg(val string) (int, error) {
 	i, err := strconv.Atoi(val)
 	if err == nil && i < 0 {
 		err = fmt.Errorf("arg must be > 0")
