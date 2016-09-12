@@ -6,42 +6,30 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/thatguystone/cog/cfs"
 )
 
 type imgArgsNS struct{}
 
 var imgArgs = imgArgsNS{}
 
-func (ia imgArgsNS) parseNameArgs(im *img, trailer string) (err error) {
-	args := strings.Split(trailer, ".")
-	if len(args) == 1 && args[0] == "" {
-		return fmt.Errorf("missing name args")
+func (ia imgArgsNS) parseName(im *img, vals string) (err error) {
+	dstExt := filepath.Ext(vals)
+	if dstExt != "" {
+		vals = cfs.DropExt(vals)
 	}
 
-	// If the last arg doesn't look like a k/v pair, it's probably the new img
-	// extension
-	n := len(args) - 1
-	last := args[n]
-	if !strings.Contains(last, "=") {
-		args[n] = fmt.Sprintf("dstExt=%s", last)
+	form, err := url.ParseQuery(vals)
+	if err != nil {
+		return
 	}
 
-	for _, arg := range args {
-		if arg == "" {
-			continue
-		}
-
-		parts := strings.Split(arg, "=")
-		if len(parts) != 2 {
-			err = fmt.Errorf("invalid arg: %s", arg)
-			return
-		}
-
-		_, err = ia.parseOne(im, parts[0], parts[1])
-		if err != nil {
-			return
-		}
+	if dstExt != "" {
+		form.Set("dstExt", dstExt)
 	}
+
+	_, err = ia.parseForm(im, form)
 
 	return
 }
@@ -92,7 +80,7 @@ func (ia imgArgsNS) parseOne(im *img, k, v string) (used bool, err error) {
 		}
 
 	case "dstExt":
-		im.dstExt = strings.Trim(v, ".")
+		im.dstExt = "." + strings.Trim(v, ".")
 
 	default:
 		used = false
@@ -110,19 +98,16 @@ func (ia imgArgsNS) postParse(im *img) {
 		im.crop = false
 	}
 
-	ext := "." + im.dstExt
-	if ext == "." || ext == filepath.Ext(im.srcPath) {
-		ext = ""
+	if im.dstExt == filepath.Ext(im.srcPath) {
+		im.dstExt = ""
 	}
-
-	im.dstExt = ext
 }
 
 func (ia imgArgsNS) format(im *img) (args string) {
 	var s []string
 
 	add := func(k, v string) {
-		s = append(s, fmt.Sprintf("%s=%s", k, v))
+		s = append(s, fmt.Sprintf("%s=%s", k, url.QueryEscape(v)))
 	}
 
 	if im.w != 0 {
@@ -141,22 +126,16 @@ func (ia imgArgsNS) format(im *img) (args string) {
 		add("q", strconv.Itoa(im.quality))
 	}
 
-	if len(s) > 0 || im.dstExt != "" {
-		// If there are no args, append a blank one so that there's always a
-		// "." before the dstExt
-		if len(s) == 0 {
-			s = append(s, "")
-		}
+	args = strings.Join(s, "&")
 
+	if args != "" || im.dstExt != "" {
 		ext := im.dstExt
 		if ext == "" {
 			ext = filepath.Ext(im.srcPath)
 		}
 
-		s = append(s, strings.Trim(ext, "."))
+		args += ext
 	}
-
-	args = strings.Join(s, ".")
 
 	return
 }

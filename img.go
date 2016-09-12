@@ -86,11 +86,11 @@ func (im *img) parseName(name string) (srcName string, err error) {
 	sepI := strings.LastIndex(name, imgArgSep)
 	if sepI == -1 {
 		srcName = name
-	} else {
-		srcName = name[:sepI]
-		err = imgArgs.parseNameArgs(im, name[sepI+1:])
+		return
 	}
 
+	srcName = name[:sepI]
+	err = imgArgs.parseName(im, name[sepI+1:])
 	return
 }
 

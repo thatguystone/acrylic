@@ -20,9 +20,9 @@ func TestImgNoChange(t *testing.T) {
 func TestImgNameArgs(t *testing.T) {
 	c := check.New(t)
 
-	im, err := newImg("some-img.jpg@h=100.w=100.d=.merp=derp.png", nil)
+	im, err := newImg("some-img.jpg@h=100&w=100&d=&merp=derp.png", nil)
 	c.Must.Nil(err)
-	c.Equal("some-img.jpg@w=100.h=100.png", im.resolvedName)
+	c.Equal("some-img.jpg@w=100&h=100.png", im.resolvedName)
 	c.True(im.needsScale())
 	c.False(im.isFinalPath)
 }
@@ -43,8 +43,8 @@ func TestImgArgsBounce(t *testing.T) {
 	paths := []string{
 		"",
 		`img.jpg`,
-		`img@h=10.c=t.jpg`,
-		`img@w=10.h=20.c=t.q=95.jpg`,
+		`img@h=10&c=t.jpg`,
+		`img@w=10&h=20&c=t&q=95.jpg`,
 	}
 
 	for _, path := range paths {
@@ -64,7 +64,7 @@ func TestImgArgsBounce(t *testing.T) {
 func TestImgDefaultArgs(t *testing.T) {
 	c := check.New(t)
 
-	im, err := newImg("img.jpg@q=0.d=0", nil)
+	im, err := newImg("img.jpg@q=0&d=0", nil)
 	c.Must.Nil(err)
 	c.Equal(im.quality, 100)
 	c.Equal(im.density, 1)
@@ -84,6 +84,18 @@ func TestImgNoDstExt(t *testing.T) {
 	c.False(im.isFinalPath)
 }
 
+func TestImgDstExtArg(t *testing.T) {
+	c := check.New(t)
+
+	im, err := newImg("img.jpg@dstExt=test", url.Values{
+		"dstExt": {"jpg"},
+	})
+	c.Must.Nil(err)
+	c.Equal("img.jpg", im.resolvedName)
+	c.False(im.needsScale())
+	c.False(im.isFinalPath)
+}
+
 func TestImgDstExtAsNameArg(t *testing.T) {
 	c := check.New(t)
 
@@ -97,10 +109,11 @@ func TestImgDstExtAsNameArg(t *testing.T) {
 func TestImgPathArgs(t *testing.T) {
 	c := check.New(t)
 
-	im, err := newImg("img@w=100.h=100.c=t.jpg", nil)
+	im, err := newImg("img@w=100&h=100&c=t.jpg", nil)
 	c.Must.Nil(err)
 	c.Equal(im.w, 100)
 	c.Equal(im.h, 100)
+	c.Equal("img@w=100&h=100&c=t.jpg", im.resolvedName)
 	c.True(im.needsScale())
 	c.True(im.isFinalPath)
 }
@@ -151,23 +164,17 @@ func TestImgInvalidQueryArgs(t *testing.T) {
 func TestImgInvalidNameArgs(t *testing.T) {
 	c := check.New(t)
 
-	_, err := newImg("img@", nil)
-	c.NotNil(err)
-
-	_, err = newImg("img@h=abcd.jpg", nil)
+	_, err := newImg("img@h=abcd.jpg", nil)
 	c.NotNil(err)
 
 	_, err = newImg("img@h=-1.jpg", nil)
-	c.NotNil(err)
-
-	_, err = newImg("img@h.w.jpg", nil)
 	c.NotNil(err)
 }
 
 func TestImgScaleArgs(t *testing.T) {
 	c := check.New(t)
 
-	im, err := newImg("img@h=100.w=100.q=96.jpg", nil)
+	im, err := newImg("img@h=100&w=100&q=96.jpg", nil)
 	c.Must.Nil(err)
 	args := imgArgs.cmdArgs(im)
 	c.Contains(args, "100x100")
@@ -178,7 +185,7 @@ func TestImgScaleArgs(t *testing.T) {
 	args = imgArgs.cmdArgs(im)
 	c.Contains(args, "x100")
 
-	im, err = newImg("img@h=100.c=t.jpg", nil)
+	im, err = newImg("img@h=100&c=t.jpg", nil)
 	c.Must.Nil(err)
 	args = imgArgs.cmdArgs(im)
 	c.Contains(args, "x100")
