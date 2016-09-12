@@ -104,8 +104,9 @@ func (ia imgArgsNS) postParse(im *img) {
 }
 
 func (ia imgArgsNS) format(im *img) (args string) {
+	// Can't use a url.Values here: the specified param order is required to
+	// create consistent image names.
 	var s []string
-
 	add := func(k, v string) {
 		s = append(s, fmt.Sprintf("%s=%s", k, url.QueryEscape(v)))
 	}
