@@ -1,8 +1,6 @@
-package crawl
+package acrylic
 
 import (
-	"regexp"
-
 	"github.com/tdewolff/minify"
 	"github.com/tdewolff/minify/css"
 	"github.com/tdewolff/minify/html"
@@ -17,5 +15,6 @@ func init() {
 	Minify.AddFunc("text/css", css.Minify)
 	Minify.AddFunc("text/html", html.Minify)
 	Minify.AddFunc("text/javascript", js.Minify)
-	Minify.AddFuncRegexp(regexp.MustCompile("[/+]json$"), json.Minify)
+	Minify.AddFunc("application/javascript", js.Minify)
+	Minify.AddFunc("application/json", json.Minify)
 }
