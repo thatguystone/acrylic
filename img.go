@@ -20,9 +20,25 @@ import (
 type Image struct {
 	Root  string // Directory to search for the original image
 	Cache string // Where to cache scaled images
+	bg    bgWork
 }
 
-func (i Image) stat(w http.ResponseWriter, path string) (os.FileInfo, bool) {
+func (im *Image) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	src := path.Join(im.Root, r.URL.Path)
+
+	info, ok := im.stat(w, src)
+	switch {
+	case !ok:
+
+	case info == nil:
+		im.serveCache(w, r)
+
+	default:
+		im.serveScale(w, r, src, info)
+	}
+}
+
+func (im *Image) stat(w http.ResponseWriter, path string) (os.FileInfo, bool) {
 	info, err := os.Stat(path)
 
 	if os.IsNotExist(err) {
@@ -38,34 +54,28 @@ func (i Image) stat(w http.ResponseWriter, path string) (os.FileInfo, bool) {
 	return info, true
 }
 
-func (i Image) cachePath(r *http.Request) string {
-	return path.Join(i.Cache, r.URL.Path)
+func (im *Image) cachePath(r *http.Request) string {
+	return path.Join(im.Cache, r.URL.Path)
 }
 
-func (i Image) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	path := path.Join(i.Root, r.URL.Path)
+func (im *Image) serveCache(w http.ResponseWriter, r *http.Request) {
+	cachePath := im.cachePath(r)
 
-	info, ok := i.stat(w, path)
-	switch {
-	case !ok:
-
-	case info == nil:
-		i.serveCache(w, r)
-
-	default:
-		i.scale(w, r, path, info)
+	err := im.bg.wait(cachePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-}
 
-func (i Image) serveCache(w http.ResponseWriter, r *http.Request) {
-	cachePath := i.cachePath(r)
-
-	info, ok := i.stat(w, cachePath)
+	info, ok := im.stat(w, cachePath)
 	switch {
 	case !ok:
 
 	case info == nil:
 		http.NotFound(w, r)
+
+	case strings.Contains(r.Header.Get("Accept"), Accept):
+		Path(w, "application/octet-stream", cachePath)
 
 	default:
 		// Provides Last-Modified caching
@@ -73,7 +83,10 @@ func (i Image) serveCache(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (i Image) scale(w http.ResponseWriter, r *http.Request, src string, info os.FileInfo) {
+func (im *Image) serveScale(
+	w http.ResponseWriter, r *http.Request,
+	src string, srcInfo os.FileInfo) {
+
 	r.ParseForm()
 
 	img, err := newImg(r.Form)
@@ -90,24 +103,28 @@ func (i Image) scale(w http.ResponseWriter, r *http.Request, src string, info os
 		return
 	}
 
-	dstPath := path.Join(i.Cache, path.Dir(r.URL.Path), dstBase)
-	cacheInfo, ok := i.stat(w, dstPath)
+	dst := path.Join(im.Cache, path.Dir(r.URL.Path), dstBase)
+	cacheInfo, ok := im.stat(w, dst)
 	if !ok {
 		return
 	}
 
-	if cacheInfo == nil || !info.ModTime().Equal(cacheInfo.ModTime()) {
-		err = img.scale(src, dstPath)
-		if err != nil {
-			log.Printf("[img] E: failed to scale %s: %v", src, err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	if cacheInfo == nil || !srcInfo.ModTime().Equal(cacheInfo.ModTime()) {
+		im.bg.do(dst, func() error {
+			err := img.scale(src, dst)
+			if err != nil {
+				log.Printf("[img] E: failed to scale %s: %v", src, err)
+				return err
+			}
 
-		err = os.Chtimes(dstPath, info.ModTime(), info.ModTime())
-		if err != nil {
-			log.Printf("[img] E: failed to set modtime for %s: %v", dstPath, err)
-		}
+			err = os.Chtimes(dst, srcInfo.ModTime(), srcInfo.ModTime())
+			if err != nil {
+				log.Printf("[img] E: failed to set modtime for %s: %v", dst, err)
+				return err
+			}
+
+			return nil
+		})
 	}
 
 	http.Redirect(w, r, dstBase, http.StatusFound)
@@ -169,13 +186,13 @@ func (img img) cacheName(src string) (string, error) {
 		buff.WriteByte('-')
 	}
 
+	var fingerp string
 	f, err := os.Open(src)
-	if err != nil {
-		return "", err
+	if err == nil {
+		fingerp, err = shortFingerprint(f)
+		f.Close()
 	}
 
-	defer f.Close()
-	fingerp, err := shortFingerprint(f)
 	if err != nil {
 		return "", err
 	}
@@ -246,7 +263,7 @@ func (img img) scale(src, dst string) error {
 	args = append(args, src, dst)
 	out, err := exec.Command("convert", args...).CombinedOutput()
 	if err != nil {
-		err = fmt.Errorf("convert:%v\n%s",
+		err = fmt.Errorf("convert: %v\n%s",
 			err.Error(),
 			stringc.Indent(string(out), indent))
 	}

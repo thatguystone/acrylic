@@ -103,3 +103,12 @@ func TestCrawlSaveErrors(t *testing.T) {
 		return cr.save(fs.Path("/test/file"), rs)
 	})
 }
+
+func TestCrawlCoverage(t *testing.T) {
+	c := check.New(t)
+
+	cr := Crawl{}
+	cr.init()
+
+	c.NotNil(cr.Logf)
+}

@@ -35,13 +35,7 @@ var crawlErr = errors.New("crawl failed; check log for details")
 
 // Do performs the actual crawl
 func (cr *Crawl) Do() (err error) {
-	if len(cr.EntryPoints) == 0 {
-		cr.EntryPoints = []string{"/"}
-	}
-
-	if cr.Logf == nil {
-		cr.Logf = log.Printf
-	}
+	cr.init()
 
 	for _, entry := range cr.EntryPoints {
 		u, err := url.Parse(path.Clean(entry))
@@ -59,6 +53,16 @@ func (cr *Crawl) Do() (err error) {
 	}
 
 	return
+}
+
+func (cr *Crawl) init() {
+	if len(cr.EntryPoints) == 0 {
+		cr.EntryPoints = []string{"/"}
+	}
+
+	if cr.Logf == nil {
+		cr.Logf = log.Printf
+	}
 }
 
 func (cr *Crawl) getContent(u *url.URL) *Content {

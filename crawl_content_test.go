@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/pkg/errors"
 	"github.com/thatguystone/cog/check"
 )
 
@@ -269,4 +271,18 @@ func TestCrawlContentErrors(t *testing.T) {
 		Logf:   c.Logf,
 	}
 	c.NotNil(cr.Do())
+}
+
+func TestCrawlContentCoverage(t *testing.T) {
+	c := check.New(t)
+
+	cr := new(Crawl)
+	ct := newContent(cr, url.URL{})
+
+	var resp response
+	resp.contType = "text/html"
+	resp.body.path = "/does/not/exist"
+
+	err := ct.processRespBody(resp)
+	c.True(os.IsNotExist(errors.Cause(err)))
 }

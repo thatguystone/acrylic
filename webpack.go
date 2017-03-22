@@ -1,5 +1,7 @@
 package acrylic
 
+//gocovr:skip-file
+
 import (
 	"fmt"
 	"net/http"
