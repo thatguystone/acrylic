@@ -19,21 +19,23 @@ type Watcher interface {
 	Changed(evs WatchEvents)
 }
 
-// Watch watches the given path
-func Watch(path string) Watches {
+// Watch watches the given paths
+func Watch(paths ...string) Watches {
 	w := Watches{
 		ch:       make(chan notify.EventInfo, 16),
 		watchers: make(chan Watcher, 4),
 	}
-	w.Watch(path)
+	w.Watch(paths...)
 	go w.run()
 	return w
 }
 
 // Watch adds a path to the watches
-func (w *Watches) Watch(path string) {
-	err := notify.Watch(path, w.ch, notify.All)
-	cog.Must(err, "failed to watch for changes")
+func (w *Watches) Watch(paths ...string) {
+	for _, path := range paths {
+		err := notify.Watch(path, w.ch, notify.All)
+		cog.Must(err, "failed to watch for changes")
+	}
 }
 
 // Stop stops the watcher and cleans up
