@@ -51,19 +51,29 @@ func (b *Bin) init() (first bool) {
 func (b *Bin) run() {
 	first := true
 
-	for range b.changed {
-		if !first {
+	for {
+		select {
+		case <-b.changed:
+			if !first {
+				b.rwmtx.Lock()
+			}
+			first = false
+
+			b.err = b.rebuild()
+			b.rwmtx.Unlock()
+
+			if b.err != nil {
+				log.Printf("[bin] %s rebuild failed:\n%v",
+					b.RunCmd[0],
+					stringc.Indent(b.err.Error(), indent))
+			}
+
+		case err := <-b.cmdErr:
 			b.rwmtx.Lock()
-		}
-		first = false
+			b.err = err
+			b.rwmtx.Unlock()
 
-		b.err = b.rebuild()
-		b.rwmtx.Unlock()
-
-		if b.err != nil {
-			log.Printf("[bin] %s rebuild failed:\n%v",
-				b.RunCmd[0],
-				stringc.Indent(b.err.Error(), indent))
+			log.Printf("[bin] %v", err)
 		}
 	}
 }
