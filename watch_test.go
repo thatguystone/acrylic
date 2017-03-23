@@ -27,6 +27,14 @@ func TestWatchBasic(t *testing.T) {
 	tw := testWatcher{ch: make(chan WatchEvents, 10)}
 	w.Notify(tw)
 
+	select {
+	case evs := <-tw.ch:
+		c.Len(evs, 0)
+
+	case <-time.After(time.Second):
+		c.Fatal("did not get events")
+	}
+
 	fs.SWriteFile("/test.ext", "test")
 
 	select {

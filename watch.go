@@ -43,7 +43,10 @@ func (w *Watches) Stop() {
 	close(w.watchers)
 }
 
-// Notify adds a Watcher to those notified on change.
+// Notify adds a Watcher to those notified on change. The watcher's Changed()
+// method will be called with a 0-len WatchEvents once the watcher has been
+// added to the internal list; this should be treated as an initialization
+// event.
 func (w *Watches) Notify(r Watcher) {
 	if r != nil {
 		w.watchers <- r
@@ -65,6 +68,7 @@ func (w *Watches) run() {
 			}
 
 			watchers = append(watchers, r)
+			r.Changed(nil)
 
 		case ev := <-w.ch:
 			evs = append(evs, ev)
