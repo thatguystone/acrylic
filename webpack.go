@@ -21,8 +21,8 @@ type Webpack struct {
 	err   atomic.Value
 }
 
-// Webpack is started on demand; this allows you to start it early to kick off
-// builds as soon as possible.
+// Start starts webpack immediately. Normally, webpack is started on demand;
+// this allows you to start it early to kick off builds as soon as possible.
 func (wp *Webpack) Start() {
 	wp.once.Do(func() {
 		wp.init()

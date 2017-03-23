@@ -31,7 +31,7 @@ type Crawl struct {
 
 const indent = "    "
 
-var crawlErr = errors.New("crawl failed; check log for details")
+var errCrawl = errors.New("crawl failed; check log for details")
 
 // Do performs the actual crawl
 func (cr *Crawl) Do() (err error) {
@@ -49,7 +49,7 @@ func (cr *Crawl) Do() (err error) {
 	cr.wg.Wait()
 
 	if cr.failed {
-		err = crawlErr
+		err = errCrawl
 	}
 
 	return

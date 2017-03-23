@@ -76,6 +76,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.proxy.ServeHTTP(w, r)
 }
 
+// Serve serves the given err, or if err != nil, calls ServeHTTP.
 func (p *Proxy) Serve(err error, w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		sendError(err, w)
