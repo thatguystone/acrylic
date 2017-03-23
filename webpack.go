@@ -14,7 +14,7 @@ import (
 // Webpack runs webpack-dev-server and proxies requests to it
 type Webpack struct {
 	Bin   string   // Defaults to "./node_modules/.bin/webpack-dev-server"
-	Port  uint16   // Defaults to 8779
+	Port  uint16   // Defaults to 9779
 	Args  []string // Extra args to pass to webpack-dev-server
 	once  sync.Once
 	proxy Proxy
@@ -36,7 +36,7 @@ func (wp *Webpack) init() {
 	}
 
 	if wp.Port == 0 {
-		wp.Port = 8779
+		wp.Port = 9779
 	}
 
 	wp.proxy.To = fmt.Sprintf("http://localhost:%d", wp.Port)
