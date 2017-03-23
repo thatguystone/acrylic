@@ -20,7 +20,6 @@ import (
 type Sass struct {
 	Entries      []string // Top-level files to build
 	Recurse      []string // Directories to recursively search for *.scss files
-	Style        int      // One of libsass.{NESTED,EXPANDED,COMPACT,COMPRESSED}_STYLE
 	IncludePaths []string // Search directories for imports
 
 	once    sync.Once
@@ -96,7 +95,9 @@ func (s *Sass) rebuild() error {
 		comp, err := libsass.New(&s.compiled, nil,
 			libsass.Path(f),
 			libsass.IncludePaths(s.IncludePaths),
-			libsass.OutputStyle(s.Style))
+
+			// Default to Nested: it's Crawl's job to compress
+			libsass.OutputStyle(libsass.NESTED_STYLE))
 
 		if err == nil {
 			err = comp.Run()
