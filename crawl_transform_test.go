@@ -27,6 +27,8 @@ func TestCrawlTransformBasic(t *testing.T) {
 		io.WriteString(w, `
 			<link rel="stylesheet" href="/style.css">
 			<img src="img.gif" srcset="img.gif 1x, img.gif 2x">
+			<a href="#hash">hash</a>
+			<a href="test#hash">test</a>
 		`)
 	})
 	r.GET("/style.css", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
@@ -34,19 +36,21 @@ func TestCrawlTransformBasic(t *testing.T) {
 		io.WriteString(w, `
 			.body {
 				background: url("/img.gif");
-				background: -webkit-img-set(
+				background: -webkit-image-set(
 					url("/img.gif") 1x,
-					url("/img.gif") 2x,
-					"/img.gif" 3x);
-				background: img-set(
+					url("/img.gif") 2x);
+				background: image-set(
 					url("/img.gif") 1x,
-					url("/img.gif") 2x,
-					"/img.gif" 3x);
+					url("/img.gif") 2x);
 			}
 		`)
 	})
 	r.GET("/img.gif", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		w.Write(gifBin)
+	})
+	r.GET("/test", func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, `test`)
 	})
 
 	cr := Crawl{
@@ -55,6 +59,9 @@ func TestCrawlTransformBasic(t *testing.T) {
 		Logf:    c.Logf,
 	}
 	c.Nil(cr.Do())
+	c.Contains(fs.SReadFile("/index.html"), `href="#hash">hash`)
+	c.Contains(fs.SReadFile("/index.html"), `href="test#hash">test`)
+	c.Contains(fs.SReadFile("/style.css"), "url(/img.gif)")
 }
 
 func TestCrawlTransformHTMLRefs(t *testing.T) {
