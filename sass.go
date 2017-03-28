@@ -167,6 +167,7 @@ func (s *Sass) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "max-age=0, must-revalidate")
 		http.ServeContent(
 			w, r, "",
 			s.lastMod, bytes.NewReader(s.compiled.Bytes()))
