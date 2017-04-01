@@ -54,6 +54,10 @@ func (b *Bin) run() {
 	for {
 		select {
 		case <-b.changed:
+			// Term before locking: long-running requests can block this
+			// otherwise
+			b.term()
+
 			if !first {
 				b.rwmtx.Lock()
 			}
@@ -79,8 +83,6 @@ func (b *Bin) run() {
 }
 
 func (b *Bin) rebuild() error {
-	b.term()
-
 	if len(b.BuildCmd) > 0 {
 		out, err := exec.Command(b.BuildCmd[0], b.BuildCmd[1:]...).CombinedOutput()
 		if err != nil {
