@@ -143,7 +143,7 @@ func (s *Sass) shouldInclude(path string) bool {
 func (s *Sass) Changed(evs WatchEvents) {
 	changed := false
 	for _, ev := range evs {
-		if s.shouldInclude(ev.Path()) {
+		if filepath.Ext(ev.Path()) == ".scss" {
 			changed = true
 			break
 		}
