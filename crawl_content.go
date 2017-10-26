@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/thatguystone/cog"
 )
 
 // Content is what lives at a URL
@@ -153,13 +152,15 @@ func (c *Content) processRespBody(resp response) (err error) {
 }
 
 func (c *Content) hit() (w *httptest.ResponseRecorder) {
-	req, err := http.NewRequest("GET", c.Src.String(), nil)
-	cog.Must(err, "[content] failed to create new request")
-	req.Header.Set("Accept", Accept)
-
 	w = httptest.NewRecorder()
 
-	c.cr.Handler.ServeHTTP(w, req)
+	c.cr.Handler.ServeHTTP(w, &http.Request{
+		Method: "GET",
+		URL:    &c.Src,
+		Header: http.Header{
+			"Accept": {Accept},
+		},
+	})
 	return
 }
 

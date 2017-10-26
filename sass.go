@@ -2,6 +2,7 @@ package acrylic
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/thatguystone/cog"
 	"github.com/thatguystone/cog/stringc"
 	"github.com/wellington/go-libsass"
 )
@@ -37,7 +37,9 @@ func (s *Sass) init() (first bool) {
 
 		for i, recurse := range s.Recurse {
 			path, err := filepath.Abs(recurse)
-			cog.Must(err, "failed to get abspath of %s", recurse)
+			if err != nil {
+				panic(fmt.Errorf("failed to get abspath of `%s`: %v", recurse, err))
+			}
 
 			s.Recurse[i] = path
 		}

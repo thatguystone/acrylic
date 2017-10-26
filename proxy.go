@@ -9,8 +9,6 @@ import (
 	"net/url"
 	"sync"
 	"time"
-
-	"github.com/thatguystone/cog"
 )
 
 // Proxy implements a reverse proxy
@@ -26,7 +24,9 @@ func (p *Proxy) init() {
 		var err error
 
 		p.url, err = url.Parse(p.To)
-		cog.Must(err, "[proxy] failed to parse to=`%s`: %v", p.To, err)
+		if err != nil {
+			panic(fmt.Errorf("[proxy] failed to parse to=`%s`: %v", p.To, err))
+		}
 
 		p.proxy = httputil.NewSingleHostReverseProxy(p.url)
 	})

@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/thatguystone/cog/check"
@@ -99,7 +98,7 @@ func TestCrawlSaveErrors(t *testing.T) {
 	err = cr.save("/totally/not/allowed", strings.NewReader(""))
 	c.NotNil(err)
 
-	check.UntilNil(100*time.Millisecond, func() error {
+	check.UntilNil(10, func() error {
 		return cr.save(fs.Path("/test/file"), rs)
 	})
 }

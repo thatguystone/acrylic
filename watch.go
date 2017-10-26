@@ -1,11 +1,11 @@
 package acrylic
 
 import (
+	"fmt"
 	"path/filepath"
 	"time"
 
 	"github.com/rjeczalik/notify"
-	"github.com/thatguystone/cog"
 )
 
 // Watches collects a bunch of directory watches into 1
@@ -34,7 +34,9 @@ func Watch(paths ...string) Watches {
 func (w *Watches) Watch(paths ...string) {
 	for _, path := range paths {
 		err := notify.Watch(path, w.ch, notify.All)
-		cog.Must(err, "failed to watch for changes")
+		if err != nil {
+			panic(fmt.Errorf("[watch] failed to watch: %v", err))
+		}
 	}
 }
 
