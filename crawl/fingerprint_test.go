@@ -1,4 +1,4 @@
-package acrylic
+package crawl
 
 import (
 	"strings"
@@ -10,16 +10,9 @@ import (
 func TestFingerprintBasic(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
-
-	fp, err := shortFingerprint(strings.NewReader("test"))
+	fp, err := fingerprint(strings.NewReader("test"))
 	c.Nil(err)
-	c.Equal(fp, "a94a8fe5ccb19b")
-
-	fs.SWriteFile("test", "test")
-	_, err = hashFile(fs.Path("test"))
-	c.Nil(err)
+	c.Equal(fp, "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3")
 }
 
 func TestFingerprintAdd(t *testing.T) {
@@ -32,11 +25,4 @@ func TestFingerprintAdd(t *testing.T) {
 	c.Equal(
 		"test.tar.abcd1234.gz", // Unfortunate :(
 		addFingerprint("test.tar.gz", "abcd1234"))
-}
-
-func TestFingerprintErrors(t *testing.T) {
-	c := check.New(t)
-
-	_, err := hashFile("doesnotexist")
-	c.NotNil(err)
 }

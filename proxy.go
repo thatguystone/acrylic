@@ -2,65 +2,59 @@ package acrylic
 
 import (
 	"fmt"
-	"html"
 	"net"
-	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"sync"
 	"time"
 )
 
-// Proxy implements a reverse proxy
+// A Proxy wraps a ReverseProxy with some utility functions
 type Proxy struct {
-	To    string // Where to proxy requests to
-	once  sync.Once
-	url   *url.URL
-	proxy *httputil.ReverseProxy
+	*httputil.ReverseProxy
+	url *url.URL
 }
 
-func (p *Proxy) init() {
-	p.once.Do(func() {
-		var err error
+// NewProxy creates a new Proxy wrapper
+func NewProxy(target string) (*Proxy, error) {
+	url, err := url.Parse(target)
+	if err != nil {
+		return nil, fmt.Errorf("proxy: failed to parse %q: %v", url, err)
+	}
 
-		p.url, err = url.Parse(p.To)
-		if err != nil {
-			panic(fmt.Errorf("[proxy] failed to parse to=`%s`: %v", p.To, err))
-		}
+	p := &Proxy{
+		url:          url,
+		ReverseProxy: httputil.NewSingleHostReverseProxy(url),
+	}
 
-		p.proxy = httputil.NewSingleHostReverseProxy(p.url)
-	})
+	return p, nil
 }
 
-// pollReady polls the backend server until it connects or gives up. If it
-// connects, the returned channel is closed, otherwise, a timeout error is sent.
-func (p *Proxy) pollReady(wait time.Duration) <-chan error {
+// PollReady polls the backend server until it connects or gives up. If it
+// connects, the returned channel is closed, otherwise, a timeout error is
+// sent.
+func (p *Proxy) PollReady(wait time.Duration) <-chan error {
 	ch := make(chan error)
 
 	go func() {
-		giveUp := time.After(wait)
+		defer close(ch)
+
+		timeout := time.After(wait)
 
 		for !p.isReady() {
 			select {
-			case <-giveUp:
-				ch <- fmt.Errorf(
-					"[proxy] could not reach `%s` in a reasonable amount of time",
-					p.url)
+			case <-timeout:
+				ch <- fmt.Errorf("proxy: could not reach %q after %s", p.url, wait)
 				return
 
 			case <-time.After(time.Millisecond):
 			}
 		}
-
-		close(ch)
 	}()
 
 	return ch
 }
 
 func (p *Proxy) isReady() (ready bool) {
-	p.init()
-
 	conn, err := net.DialTimeout("tcp", p.url.Host, 100*time.Millisecond)
 	if err == nil {
 		ready = true
@@ -68,36 +62,4 @@ func (p *Proxy) isReady() (ready bool) {
 	}
 
 	return
-}
-
-// ServeHTTP implements http.Handler
-func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	p.init()
-	p.proxy.ServeHTTP(w, r)
-}
-
-// Serve serves the given err, or if err != nil, calls ServeHTTP.
-func (p *Proxy) Serve(err error, w http.ResponseWriter, r *http.Request) {
-	if err != nil {
-		sendError(err, w)
-	} else {
-		p.ServeHTTP(w, r)
-	}
-}
-
-func sendError(err error, w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusInternalServerError)
-
-	fmt.Fprintf(w,
-		`
-			<style>
-				body {
-					background: #252830;
-					color: #fff;
-				}
-			</style>
-			<h1>Error</h1><pre>%s</pre>
-		`,
-		html.EscapeString(err.Error()))
 }

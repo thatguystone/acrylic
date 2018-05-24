@@ -2,57 +2,49 @@ package acrylic
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/thatguystone/cog/stringc"
 	"github.com/wellington/go-libsass"
 )
 
 // Sass compiles scss files
 type Sass struct {
-	Entries      []string // Top-level files to build
-	Recurse      []string // Directories to recursively search for *.scss files
-	IncludePaths []string // Search directories for imports
+	Entries      []string                     // Top-level files to build
+	IncludePaths []string                     // Search directories for imports
+	Concat       []string                     // Extra files to concat to the output
+	Logf         func(string, ...interface{}) // Where to log messages
 
-	once    sync.Once
 	changed chan struct{}
 
-	rwmtx    sync.RWMutex
-	compiled bytes.Buffer // Compiled output
-	lastMod  time.Time
-	err      error
+	rwmtx      sync.RWMutex
+	compiled   []byte
+	compileErr error
+	lastMod    *time.Time
 }
 
-func (s *Sass) init() (first bool) {
-	s.once.Do(func() {
-		first = true
+func (s *Sass) Start(*Watch) {
+	s.changed = make(chan struct{}, 1)
+	s.changed <- struct{}{}
 
-		for i, recurse := range s.Recurse {
-			path, err := filepath.Abs(recurse)
-			if err != nil {
-				panic(fmt.Errorf("failed to get abspath of `%s`: %v", recurse, err))
-			}
+	if s.Logf == nil {
+		s.Logf = log.Printf
+	}
 
-			s.Recurse[i] = path
-		}
+	// Lock, pending first build
+	s.rwmtx.Lock()
 
-		s.changed = make(chan struct{}, 2)
+	go s.run()
+}
 
-		s.rwmtx.Lock() // Lock, pending first build
+func (s *Sass) Changed(evs WatchEvents) {
+	if evs.HasExt(".scss") {
 		s.changed <- struct{}{}
-
-		go s.run()
-	})
-
-	return
+	}
 }
 
 func (s *Sass) run() {
@@ -64,114 +56,90 @@ func (s *Sass) run() {
 		}
 		first = false
 
-		s.err = s.rebuild()
+		start := time.Now()
+		s.Logf("I: sass %s: rebuilding...\n", s.Entries)
+		s.compileErr = s.rebuild()
+
 		s.rwmtx.Unlock()
 
-		if s.err != nil {
-			log.Printf("[sass] rebuild failed:\n%v",
-				stringc.Indent(s.err.Error(), indent))
+		if s.compileErr == nil {
+			s.Logf("I: sass %s: rebuild took %s\n",
+				s.Entries, time.Since(start))
+		} else {
+			s.Logf("E: sass %s: rebuild failed:\n%v",
+				s.Entries, stringc.Indent(s.compileErr.Error(), indent))
 		}
 	}
 }
 
 func (s *Sass) rebuild() error {
-	s.compiled.Reset()
-	s.lastMod = time.Time{}
-	entries := s.Entries
+	s.compiled = nil
+	s.compileErr = nil
+	s.lastMod = nil
 
-	for _, recurse := range s.Recurse {
-		err := filepath.Walk(recurse,
-			func(path string, info os.FileInfo, err error) error {
-				if s.shouldInclude(path) {
-					entries = append(entries, path)
-				}
+	var imports []string
+	var buff bytes.Buffer
 
-				return err
-			})
-		if err != nil {
-			return errors.Wrap(err, "filepath.Walk")
-		}
-	}
+	for _, path := range s.Entries {
+		imports = append(imports, path)
 
-	for _, f := range entries {
-		comp, err := libsass.New(&s.compiled, nil,
-			libsass.Path(f),
+		comp, err := libsass.New(&buff, nil,
+			libsass.Path(path),
 			libsass.IncludePaths(s.IncludePaths),
 
 			// Default to Nested: it's Crawl's job to compress
 			libsass.OutputStyle(libsass.NESTED_STYLE))
 
-		if err == nil {
-			err = comp.Run()
-		}
-
-		if err == nil {
-			imports := comp.Imports()
-			imports = append(imports, f)
-			err = s.updateLastMod(imports)
-		}
-
 		if err != nil {
-			return errors.Wrapf(err, "in file %s: %v", f, err)
+			return err
 		}
+
+		err = comp.Run()
+		if err != nil {
+			return err
+		}
+
+		imports = append(imports, comp.Imports()...)
 	}
 
-	return nil
-}
+	s.compiled = buff.Bytes()
 
-func (s *Sass) updateLastMod(paths []string) error {
-	for _, path := range paths {
+	for _, path := range imports {
 		info, err := os.Stat(path)
 		if err != nil {
 			return err
 		}
 
-		if info.ModTime().After(s.lastMod) {
-			s.lastMod = info.ModTime()
+		mod := info.ModTime()
+		if s.lastMod == nil || mod.After(*s.lastMod) {
+			s.lastMod = &mod
 		}
 	}
 
 	return nil
 }
 
-// shouldInclude checks if the given path should be included in a build.
-func (s *Sass) shouldInclude(path string) bool {
-	base := filepath.Base(path)
-	ext := filepath.Ext(base)
-	return ext == ".scss" && !strings.HasPrefix(base, "_")
-}
-
-// Changed implements Watcher
-func (s *Sass) Changed(evs WatchEvents) {
-	changed := false
-	for _, ev := range evs {
-		if filepath.Ext(ev.Path()) == ".scss" {
-			changed = true
-			break
-		}
+func (s *Sass) getLastMod() time.Time {
+	if s.lastMod != nil {
+		return *s.lastMod
 	}
 
-	if !s.init() && changed {
-		s.changed <- struct{}{}
-	}
+	return time.Now()
 }
 
 // ServeHTTP implements http.Handler
 func (s *Sass) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.init()
-
 	s.rwmtx.RLock()
 	defer s.rwmtx.RUnlock()
 
-	switch {
-	case s.err != nil:
-		sendError(s.err, w)
-
-	default:
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		setCacheHeaders(w)
-		http.ServeContent(
-			w, r, "",
-			s.lastMod, bytes.NewReader(s.compiled.Bytes()))
+	if s.compileErr != nil {
+		sendError(w, s.compileErr)
+		return
 	}
+
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	setCacheHeaders(w)
+	http.ServeContent(
+		w, r, "",
+		s.getLastMod(), bytes.NewReader(s.compiled))
 }

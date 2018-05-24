@@ -8,54 +8,53 @@ import (
 	"github.com/rjeczalik/notify"
 )
 
-// Watches collects a bunch of directory watches into 1
-type Watches struct {
-	ch       chan notify.EventInfo
-	watchers chan Watcher
-}
-
 // A Watcher receives notifications of changes
 type Watcher interface {
+	Start(w *Watch)
 	Changed(evs WatchEvents)
 }
 
-// Watch watches the given paths
-func Watch(paths ...string) Watches {
-	w := Watches{
-		ch:       make(chan notify.EventInfo, 16),
-		watchers: make(chan Watcher, 4),
+type Watch struct {
+	evs      chan notify.EventInfo
+	watchers chan Watcher
+}
+
+func NewWatch(paths ...string) *Watch {
+	w := &Watch{
+		evs:      make(chan notify.EventInfo, 16),
+		watchers: make(chan Watcher, 1),
 	}
-	w.Watch(paths...)
+
 	go w.run()
+	w.Watch(paths...)
 	return w
 }
 
-// Watch adds a path to the watches
-func (w *Watches) Watch(paths ...string) {
+// Watch adds additional paths to the watch
+func (w *Watch) Watch(paths ...string) {
 	for _, path := range paths {
-		err := notify.Watch(path, w.ch, notify.All)
+		err := notify.Watch(path, w.evs, notify.All)
 		if err != nil {
-			panic(fmt.Errorf("[watch] failed to watch: %v", err))
+			panic(fmt.Errorf("failed to watch %q: %v", path, err))
 		}
 	}
 }
 
-// Stop stops the watcher and cleans up
-func (w *Watches) Stop() {
-	close(w.watchers)
-}
-
-// Notify adds a Watcher to those notified on change. The watcher's Changed()
-// method will be called with a 0-len WatchEvents once the watcher has been
-// added to the internal list; this should be treated as an initialization
-// event.
-func (w *Watches) Notify(r Watcher) {
-	if r != nil {
-		w.watchers <- r
+// Notify notifies the given Watcher of changes as they happen
+func (w *Watch) Notify(wr Watcher) {
+	if wr != nil {
+		wr.Start(w)
+		w.watchers <- wr
 	}
 }
 
-func (w *Watches) run() {
+// Stop stops all further notifications and destroys all watches
+func (w *Watch) Stop() {
+	notify.Stop(w.evs)
+	close(w.evs)
+}
+
+func (w *Watch) run() {
 	delay := time.NewTimer(time.Hour)
 	delay.Stop()
 
@@ -64,21 +63,20 @@ func (w *Watches) run() {
 
 	for {
 		select {
-		case r := <-w.watchers:
-			if r == nil {
+		case wr := <-w.watchers:
+			watchers = append(watchers, wr)
+
+		case ev := <-w.evs:
+			if ev == nil {
 				return
 			}
 
-			watchers = append(watchers, r)
-			r.Changed(nil)
-
-		case ev := <-w.ch:
 			evs = append(evs, ev)
 			delay.Reset(25 * time.Millisecond)
 
 		case <-delay.C:
-			for _, r := range watchers {
-				r.Changed(evs)
+			for _, wr := range watchers {
+				wr.Changed(evs)
 			}
 
 			evs = nil

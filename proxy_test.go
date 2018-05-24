@@ -1,7 +1,6 @@
 package acrylic
 
 import (
-	"errors"
 	"net"
 	"net/http/httptest"
 	"testing"
@@ -17,30 +16,31 @@ func TestProxyBasic(t *testing.T) {
 	c.Must.Nil(err)
 	defer l.Close()
 
-	p := Proxy{
-		To: "http://" + l.Addr().String(),
-	}
+	p, err := NewProxy("http://" + l.Addr().String())
+	c.Must.Nil(err)
 
-	err = <-p.pollReady(10 * time.Millisecond)
+	err = <-p.PollReady(1 * time.Millisecond)
 	c.Nil(err)
 }
 
 func TestProxyNotReady(t *testing.T) {
 	c := check.New(t)
 
-	p := Proxy{
-		To: "http://127.0.0.1:999999",
-	}
+	p, err := NewProxy("http://127.0.0.1:999999")
+	c.Must.Nil(err)
 
-	err := <-p.pollReady(10 * time.Millisecond)
+	err = <-p.PollReady(1 * time.Millisecond)
 	c.NotNil(err)
 
 	w := httptest.NewRecorder()
-	p.Serve(nil, w, httptest.NewRequest("GET", "/", nil))
+	p.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
 	c.Equal(w.Code, 502)
+}
 
-	w = httptest.NewRecorder()
-	p.Serve(errors.New("error"), w, httptest.NewRequest("GET", "/", nil))
-	c.Equal(w.Code, 500)
-	c.Contains(w.Body.String(), "Error")
+func TestProxyURLParseError(t *testing.T) {
+	c := check.New(t)
+
+	_, err := NewProxy(`%20://`)
+	c.Must.NotNil(err)
+	c.Contains(err.Error(), "failed to parse")
 }
