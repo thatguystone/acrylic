@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -27,7 +28,7 @@ const (
 )
 
 // Crawl performs a crawl with the given config
-func Crawl(cfg Config) (map[string]*Content, error) {
+func Crawl(cfg Config) (cc CrawlContent, err error) {
 	if len(cfg.Entries) == 0 {
 		cfg.Entries = []string{"/"}
 	}
@@ -40,10 +41,12 @@ func Crawl(cfg Config) (map[string]*Content, error) {
 		cfg:        cfg,
 		transforms: make(map[string][]Transform),
 		err:        make(Error),
-		content:    make(map[string]*Content),
-		pages:      make(map[string]*Content),
-		outputs:    make(map[string]*Content),
-		used:       make(map[string]struct{}),
+		cc: CrawlContent{
+			urls:  make(map[string]*Content),
+			pages: make(map[string]*Content),
+			files: make(map[string]*Content),
+		},
+		used: make(map[string]struct{}),
 	}
 
 	for contType, ts := range cfg.Transforms {
@@ -63,30 +66,31 @@ func Crawl(cfg Config) (map[string]*Content, error) {
 
 	cr.wg.Wait()
 
-	err := cr.err.getError()
+	err = cr.err.getError()
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	err = cr.cleanup()
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	return cr.content, nil
+	cc = cr.cc
+	return
 }
 
+// A Crawler is the high-level interface for dealing with content during a
+// Crawl()
 type Crawler struct {
 	cfg        Config
 	transforms map[string][]Transform
 	wg         sync.WaitGroup
 
-	mtx     sync.Mutex
-	err     Error
-	content map[string]*Content
-	pages   map[string]*Content
-	outputs map[string]*Content
-	used    map[string]struct{}
+	mtx  sync.Mutex
+	err  Error
+	cc   CrawlContent
+	used map[string]struct{}
 }
 
 // Get gets Content by raw URL
@@ -111,27 +115,15 @@ func (cr *Crawler) GetRel(c *Content, rel string) *Content {
 
 // GetURL gets Content by URL
 func (cr *Crawler) GetURL(u *url.URL) *Content {
-	uu := *u
-
-	// Avoid "." as a path
-	if uu.Path != "" {
-		uu.Path = path.Clean(uu.Path)
-	}
-
-	// Sort query
-	uu.RawQuery = uu.Query().Encode()
-
-	// Has no meaning server-side
-	uu.Fragment = ""
-
+	uu := cr.cc.normURL(u)
 	k := uu.String()
 
 	cr.mtx.Lock()
 
-	c, ok := cr.content[k]
+	c, ok := cr.cc.urls[k]
 	if !ok {
 		c = newContent(cr, uu)
-		cr.content[k] = c
+		cr.cc.urls[k] = c
 	}
 
 	cr.mtx.Unlock()
@@ -156,9 +148,9 @@ func (cr *Crawler) addError(file string, err error) {
 func (cr *Crawler) claimPage(c *Content, page string) (*Content, bool) {
 	cr.mtx.Lock()
 
-	claimer, ok := cr.pages[page]
+	claimer, ok := cr.cc.pages[page]
 	if !ok {
-		cr.pages[page] = c
+		cr.cc.pages[page] = c
 	}
 
 	cr.mtx.Unlock()
@@ -166,30 +158,28 @@ func (cr *Crawler) claimPage(c *Content, page string) (*Content, bool) {
 	return claimer, !ok
 }
 
-func (cr *Crawler) setUsed(file string) error {
+func (cr *Crawler) setUsed(file string) {
 	abs, err := filepath.Abs(file)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	cr.mtx.Lock()
 	cr.used[abs] = struct{}{}
 	cr.mtx.Unlock()
-
-	return nil
 }
 
 func (cr *Crawler) claimOutput(c *Content, file string) error {
 	abs, err := filepath.Abs(file)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	cr.mtx.Lock()
 
-	using, inUse := cr.outputs[abs]
+	using, inUse := cr.cc.files[abs]
 	if !inUse {
-		cr.outputs[abs] = c
+		cr.cc.files[abs] = c
 		cr.used[abs] = struct{}{}
 	}
 
@@ -203,4 +193,65 @@ func (cr *Crawler) claimOutput(c *Content, file string) error {
 	}
 
 	return nil
+}
+
+// CrawlContent contains all content that the crawler found during its run.
+type CrawlContent struct {
+	urls  map[string]*Content // Content by full URL
+	pages map[string]*Content // Content by url.Path
+	files map[string]*Content // Content by absolute output path
+}
+
+func (cc *CrawlContent) normURL(u *url.URL) url.URL {
+	uu := *u
+
+	if uu.Path == "" {
+		uu.Path = "/"
+	} else {
+		uu.Path = path.Clean(uu.Path)
+
+		// path.Clean removes trailing slashes, but they matter here
+		if strings.HasSuffix(u.Path, "/") && !strings.HasSuffix(uu.Path, "/") {
+			uu.Path += "/"
+		}
+	}
+
+	// Sort query
+	uu.RawQuery = uu.Query().Encode()
+
+	// Has no meaning server-side
+	uu.Fragment = ""
+
+	return uu
+}
+
+// Get the Content at the given URL.
+func (cc *CrawlContent) Get(rawURL string) *Content {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		panic(err)
+	}
+
+	return cc.GetURL(u)
+}
+
+// Get the Content at the given URL.
+func (cc *CrawlContent) GetURL(u *url.URL) *Content {
+	uu := cc.normURL(u)
+	return cc.urls[uu.String()]
+}
+
+// GetPage gets the Content at the given url.Path.
+func (cc *CrawlContent) GetPage(page string) *Content {
+	return cc.pages[path.Clean(page)]
+}
+
+// GetFile gets the Content that corresponds to a file in the output directory.
+func (cc *CrawlContent) GetFile(path string) *Content {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		panic(err)
+	}
+
+	return cc.files[abs]
 }

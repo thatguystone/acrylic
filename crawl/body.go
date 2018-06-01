@@ -47,7 +47,7 @@ func ServeFile(w http.ResponseWriter, r *http.Request, path string) {
 // request. This is mainly useful for handlers that change their output based on
 // query string vals (eg. image scalers, css themes, etc).
 //
-// All links that point to original, requested page are rewritten.
+// All links that point to original URL will be rewritten.
 func Variant(w http.ResponseWriter, name string) {
 	w.Header().Set(variantHeader, name)
 }

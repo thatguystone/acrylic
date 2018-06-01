@@ -1,6 +1,7 @@
 package crawl
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -38,7 +39,7 @@ var gifBin = []byte{
 	0x00, 0x3b,
 }
 
-func TestCrawlBasic(t *testing.T) {
+func TestCrawlAutoAddIndex(t *testing.T) {
 	c := check.New(t)
 
 	fs, clean := c.FS()
@@ -48,58 +49,48 @@ func TestCrawlBasic(t *testing.T) {
 		Handler: mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
-				body: `` +
-					`<link href="all.css" rel="stylesheet">` +
-					`<style>.body { background: url(body.gif); }</style>` +
-					`<a href="dir/dir/about.html?args=1#to-1" style="background: url('link.gif')">about 1</a>` +
-					`<a href="dir/dir/about.html?args=2#to-2">about 2</a>` +
-					`root`,
+				body:     `index`,
 			},
-			"/dir/dir/about.html": stringHandler{
+		}),
+		Entries: []string{"/"},
+		Output:  fs.Path("."),
+	}
+
+	cont, err := Crawl(cfg)
+	c.Must.Nil(err)
+	fs.DumpTree(".")
+
+	index := cont.GetPage("/")
+	c.Equal(index.OutputPath, fs.Path("/index.html"))
+}
+
+func TestCrawlInlineStyles(t *testing.T) {
+	c := check.New(t)
+
+	fs, clean := c.FS()
+	defer clean()
+
+	cfg := Config{
+		Handler: mux(map[string]http.Handler{
+			"/": stringHandler{
 				contType: htmlType,
-				body: `<link href="../../all.css" rel="stylesheet">about` +
-					`<a href="../../">index</a>`,
+				body:     `<div style="background: url(img.gif);"></div>`,
 			},
-			"/all.css": stringHandler{
-				contType: cssType,
-				body: `@import "print.css" print;` +
-					` .logo { background: url("logo.gif"); }`,
-			},
-			"/print.css": stringHandler{
-				contType: cssType,
-				body:     `.print {}`,
-			},
-			"/logo.gif": stringHandler{
-				contType: gifType,
-				body:     string(gifBin),
-			},
-			"/link.gif": stringHandler{
-				contType: gifType,
-				body:     string(gifBin),
-			},
-			"/body.gif": stringHandler{
+
+			"/img.gif": stringHandler{
 				contType: gifType,
 				body:     string(gifBin),
 			},
 		}),
-		Entries: []string{
-			"/",
-		},
-		Output: fs.Path("."),
-		Fingerprint: func(c *Content) bool {
-			return filepath.Ext(c.Src.Path) == ".css"
-		},
+		Entries: []string{"/"},
+		Output:  fs.Path("."),
 	}
 
 	_, err := Crawl(cfg)
-	c.Nil(err)
-
+	c.Must.Nil(err)
 	fs.DumpTree(".")
 
-	c.Equal(fs.SReadFile("index.html"), "")
-	c.Equal(fs.SReadFile("dir/dir/about.html"), "about")
-
-	// fmt.Println(contents["/print.css"].Dst)
+	fs.FileExists("img.gif")
 }
 
 func TestCrawlFingerprint(t *testing.T) {
@@ -112,60 +103,30 @@ func TestCrawlFingerprint(t *testing.T) {
 		Handler: mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
-				body: `` +
-					`<link href="all.css" rel="stylesheet">` +
-					`<link href="all.css?t=light" rel="stylesheet">` +
-					`<link href="all.css?t=dark" rel="stylesheet">` +
-					`<link href="all.css?t=redir" rel="stylesheet">` +
-					`<script src="all.js?q=1">`,
+				body:     `<link href="all.css" rel="stylesheet">`,
 			},
-			"/all.css": http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					switch r.FormValue("t") {
-					case "dark":
-						stringHandler{
-							contType: cssType,
-							body:     `body { background: #000; }`,
-						}.ServeHTTP(w, r)
-
-					case "redir":
-						http.Redirect(w, r, "redir.css", http.StatusFound)
-
-					default:
-						stringHandler{
-							contType: cssType,
-							body:     `body { background: #fff; }`,
-						}.ServeHTTP(w, r)
-					}
-				}),
-			"/redir.css": stringHandler{
+			"/all.css": stringHandler{
 				contType: cssType,
-				body:     `.body { }`,
-			},
-			"/all.js": stringHandler{
-				contType: jsType,
-				body:     `function() {}`,
+				body:     `body { background: #000; }`,
 			},
 		}),
-		Entries: []string{
-			"/",
-		},
-		Output: fs.Path("."),
+		Entries: []string{"/"},
+		Output:  fs.Path("."),
 		Fingerprint: func(c *Content) bool {
-			switch filepath.Ext(c.Src.Path) {
-			case ".css", ".js":
-				return true
-			default:
-				return false
-			}
+			return filepath.Ext(c.Src.Path) == ".css"
 		},
 	}
 
-	_, err := Crawl(cfg)
-	c.Nil(err)
-
+	cont, err := Crawl(cfg)
+	c.Must.Nil(err)
 	fs.DumpTree(".")
-	c.Equal(fs.SReadFile("index.html"), "")
+
+	allCSS := cont.GetPage("/all.css")
+	c.NotLen(allCSS.Fingerprint, 0)
+	c.Contains(allCSS.Dst.Path, allCSS.Fingerprint)
+
+	index := fs.SReadFile("index.html")
+	c.Contains(index, allCSS.Dst.Path)
 }
 
 func TestCrawlVariant(t *testing.T) {
@@ -179,49 +140,52 @@ func TestCrawlVariant(t *testing.T) {
 			"/": stringHandler{
 				contType: htmlType,
 				body: `` +
-					`<link href="all.css" rel="stylesheet">` +
-					`<link href="all.css?c=dark" rel="stylesheet">` +
-					`<link href="all.css?c=with-query" rel="stylesheet">`,
+					`<a href="people/?who=bob">Bob</a>` +
+					`<a href="people/?who=alice">Alice</a>`,
 			},
-			"/all.css": http.HandlerFunc(
+			"/people/": http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
-					switch r.FormValue("c") {
-					case "dark":
-						Variant(w, "all.dark.css")
+					switch r.FormValue("who") {
+					case "bob":
+						Variant(w, "bob.html")
 						stringHandler{
-							contType: cssType,
-							body:     `body { background: #000; }`,
+							contType: htmlType,
+							body:     `bob is a person`,
 						}.ServeHTTP(w, r)
 
-					case "with-query":
-						Variant(w, "all.derp.css?c=with-query")
+					case "alice":
+						Variant(w, "alice.html")
 						stringHandler{
-							contType: cssType,
-							body:     `body { background: #333; }`,
+							contType: htmlType,
+							body:     `alice is cool`,
 						}.ServeHTTP(w, r)
 
 					default:
-						stringHandler{
-							contType: cssType,
-							body:     `body { background: #fff; }`,
-						}.ServeHTTP(w, r)
+						http.NotFound(w, r)
 					}
 				}),
 		}),
-		Entries: []string{
-			"/",
-		},
-		Output: fs.Path("."),
-		Fingerprint: func(c *Content) bool {
-			return filepath.Ext(c.Src.Path) == ".css"
-		},
+		Entries: []string{"/"},
+		Output:  fs.Path("."),
 	}
 
-	_, err := Crawl(cfg)
-	c.Nil(err)
-
+	cont, err := Crawl(cfg)
+	c.Must.Nil(err)
 	fs.DumpTree(".")
-	c.Equal(fs.SReadFile("index.html"), "")
+
+	c.Equal(cont.Get("/people/?who=bob").Dst.Path, "/people/bob.html")
+	c.Equal(cont.Get("/people/?who=alice").Dst.Path, "/people/alice.html")
+
+	index := fs.SReadFile("index.html")
+	c.Contains(index, "people/bob.html")
+	c.Contains(index, "people/alice.html")
+
+	c.Equal(fs.SReadFile("people/bob.html"), "bob is a person")
+	c.Equal(fs.SReadFile("people/alice.html"), "alice is cool")
+}
+
+func TestCrawlVariantFingerprint(t *testing.T) {
+
 }
 
 func TestCrawlURLFragment(t *testing.T) {
@@ -230,26 +194,41 @@ func TestCrawlURLFragment(t *testing.T) {
 	fs, clean := c.FS()
 	defer clean()
 
+	links := []string{
+		"//google.com#frag-1",
+		"//google.com#frag-2",
+		"//othersite.com#frag",
+		"/page/#frag",
+	}
+
+	body := ""
+	for _, link := range links {
+		body += fmt.Sprintf(`<a href="%s"></a>`, link)
+	}
+
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
-				body: `` +
-					`<a href="//google.com#frag-1">link 1</a>` +
-					`<a href="//google.com#frag-2">link 2</a>`,
+				body:     body,
+			},
+			"/page/": stringHandler{
+				contType: htmlType,
+				body:     `<div id="frag"></div>`,
 			},
 		}),
-		Entries: []string{
-			"/",
-		},
-		Output: fs.Path("."),
+		Entries: []string{"/"},
+		Output:  fs.Path("."),
 	}
 
 	_, err := Crawl(cfg)
-	c.Nil(err)
-
+	c.Must.Nil(err)
 	fs.DumpTree(".")
-	c.Equal(fs.SReadFile("index.html"), "")
+
+	index := fs.SReadFile("index.html")
+	for _, link := range links {
+		c.Contains(index, link)
+	}
 }
 
 func TestCrawlContentError(t *testing.T) {
@@ -259,25 +238,12 @@ func TestCrawlContentError(t *testing.T) {
 	defer clean()
 
 	cfg := Config{
-		Handler: mux(map[string]http.Handler{
-			"/": stringHandler{
-				contType: htmlType,
-				body:     `<link href="all.css" rel="stylesheet">`,
-			},
-			"/all.css": http.HandlerFunc(http.NotFound),
-		}),
-		Entries: []string{
-			"/",
-		},
-		Output: fs.Path("."),
-		Fingerprint: func(c *Content) bool {
-			return filepath.Ext(c.Src.Path) == ".css"
-		},
+		Handler: http.HandlerFunc(http.NotFound),
+		Entries: []string{"/"},
+		Output:  fs.Path("."),
 	}
 
 	_, err := Crawl(cfg)
-	c.Nil(err)
-
-	fs.DumpTree(".")
-	c.Equal(fs.SReadFile("index.html"), "")
+	c.Must.NotNil(err)
+	c.Equal(err.(Error)["/"][0].(ResponseError).Code, http.StatusNotFound)
 }

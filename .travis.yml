@@ -2,3 +2,8 @@ language: go
 
 go:
   - stable
+
+addons:
+  apt:
+    packages:
+      - graphicsmagick

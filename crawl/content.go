@@ -169,11 +169,7 @@ func (c *Content) render(resp *httptest.ResponseRecorder) error {
 	if body.canSymlink() {
 		// Need to mark the src as used so that it doesn't get cleaned up,
 		// leaving a broken symlink.
-		err := c.cr.setUsed(body.symSrc)
-		if err != nil {
-			return err
-		}
-
+		c.cr.setUsed(body.symSrc)
 		return os.Symlink(body.symSrc, c.OutputPath)
 	}
 
@@ -315,6 +311,8 @@ func (c *Content) checkMime(body *body) {
 // redirects) from c.
 func (c *Content) GetLinkTo(o *Content, link string) string {
 	o = o.FollowRedirects()
+
+	fmt.Println(o.Src.String(), link)
 
 	if o.IsExternal() {
 		return o.Src.String()
