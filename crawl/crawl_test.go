@@ -29,6 +29,8 @@ func (h stringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, h.body)
 }
 
+const gifType = "image/gif"
+
 var gifBin = []byte{
 	0x47, 0x49, 0x46, 0x38, 0x37, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80,
 	0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x2c, 0x00, 0x00,
@@ -55,7 +57,8 @@ func TestCrawlBasic(t *testing.T) {
 			},
 			"/dir/dir/about.html": stringHandler{
 				contType: htmlType,
-				body:     `<link href="../../all.css" rel="stylesheet">about`,
+				body: `<link href="../../all.css" rel="stylesheet">about` +
+					`<a href="../../">index</a>`,
 			},
 			"/all.css": stringHandler{
 				contType: cssType,
@@ -67,15 +70,15 @@ func TestCrawlBasic(t *testing.T) {
 				body:     `.print {}`,
 			},
 			"/logo.gif": stringHandler{
-				contType: "image/gif",
+				contType: gifType,
 				body:     string(gifBin),
 			},
 			"/link.gif": stringHandler{
-				contType: "image/gif",
+				contType: gifType,
 				body:     string(gifBin),
 			},
 			"/body.gif": stringHandler{
-				contType: "image/gif",
+				contType: gifType,
 				body:     string(gifBin),
 			},
 		}),
@@ -86,7 +89,6 @@ func TestCrawlBasic(t *testing.T) {
 		Fingerprint: func(c *Content) bool {
 			return filepath.Ext(c.Src.Path) == ".css"
 		},
-		Links: AbsoluteLinks,
 	}
 
 	_, err := Crawl(cfg)
@@ -111,22 +113,31 @@ func TestCrawlFingerprint(t *testing.T) {
 			"/": stringHandler{
 				contType: htmlType,
 				body: `` +
-					`<link href="all.css?q=1" rel="stylesheet">` +
-					`<link href="all.css?q=2" rel="stylesheet">` +
-					`<link href="all.css?q=3" rel="stylesheet">` +
+					`<link href="all.css" rel="stylesheet">` +
+					`<link href="all.css?t=light" rel="stylesheet">` +
+					`<link href="all.css?t=dark" rel="stylesheet">` +
+					`<link href="all.css?t=redir" rel="stylesheet">` +
 					`<script src="all.js?q=1">`,
 			},
-			"/all.css": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.FormValue("q") == "3" {
-					http.Redirect(w, r, "redir.css", http.StatusFound)
-					return
-				}
+			"/all.css": http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					switch r.FormValue("t") {
+					case "dark":
+						stringHandler{
+							contType: cssType,
+							body:     `body { background: #000; }`,
+						}.ServeHTTP(w, r)
 
-				stringHandler{
-					contType: cssType,
-					body:     `.logo { }`,
-				}.ServeHTTP(w, r)
-			}),
+					case "redir":
+						http.Redirect(w, r, "redir.css", http.StatusFound)
+
+					default:
+						stringHandler{
+							contType: cssType,
+							body:     `body { background: #fff; }`,
+						}.ServeHTTP(w, r)
+					}
+				}),
 			"/redir.css": stringHandler{
 				contType: cssType,
 				body:     `.body { }`,
@@ -147,6 +158,120 @@ func TestCrawlFingerprint(t *testing.T) {
 			default:
 				return false
 			}
+		},
+	}
+
+	_, err := Crawl(cfg)
+	c.Nil(err)
+
+	fs.DumpTree(".")
+	c.Equal(fs.SReadFile("index.html"), "")
+}
+
+func TestCrawlVariant(t *testing.T) {
+	c := check.New(t)
+
+	fs, clean := c.FS()
+	defer clean()
+
+	cfg := Config{
+		Handler: mux(map[string]http.Handler{
+			"/": stringHandler{
+				contType: htmlType,
+				body: `` +
+					`<link href="all.css" rel="stylesheet">` +
+					`<link href="all.css?c=dark" rel="stylesheet">` +
+					`<link href="all.css?c=with-query" rel="stylesheet">`,
+			},
+			"/all.css": http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					switch r.FormValue("c") {
+					case "dark":
+						Variant(w, "all.dark.css")
+						stringHandler{
+							contType: cssType,
+							body:     `body { background: #000; }`,
+						}.ServeHTTP(w, r)
+
+					case "with-query":
+						Variant(w, "all.derp.css?c=with-query")
+						stringHandler{
+							contType: cssType,
+							body:     `body { background: #333; }`,
+						}.ServeHTTP(w, r)
+
+					default:
+						stringHandler{
+							contType: cssType,
+							body:     `body { background: #fff; }`,
+						}.ServeHTTP(w, r)
+					}
+				}),
+		}),
+		Entries: []string{
+			"/",
+		},
+		Output: fs.Path("."),
+		Fingerprint: func(c *Content) bool {
+			return filepath.Ext(c.Src.Path) == ".css"
+		},
+	}
+
+	_, err := Crawl(cfg)
+	c.Nil(err)
+
+	fs.DumpTree(".")
+	c.Equal(fs.SReadFile("index.html"), "")
+}
+
+func TestCrawlURLFragment(t *testing.T) {
+	c := check.New(t)
+
+	fs, clean := c.FS()
+	defer clean()
+
+	cfg := Config{
+		Handler: mux(map[string]http.Handler{
+			"/": stringHandler{
+				contType: htmlType,
+				body: `` +
+					`<a href="//google.com#frag-1">link 1</a>` +
+					`<a href="//google.com#frag-2">link 2</a>`,
+			},
+		}),
+		Entries: []string{
+			"/",
+		},
+		Output: fs.Path("."),
+	}
+
+	_, err := Crawl(cfg)
+	c.Nil(err)
+
+	fs.DumpTree(".")
+	c.Equal(fs.SReadFile("index.html"), "")
+}
+
+func TestCrawlContentError(t *testing.T) {
+	c := check.New(t)
+
+	fs, clean := c.FS()
+	defer clean()
+
+	cfg := Config{
+		Handler: mux(map[string]http.Handler{
+			"/": stringHandler{
+				contType: htmlType,
+				body:     `<link href="all.css" rel="stylesheet">`,
+			},
+			"/all.css": http.HandlerFunc(http.NotFound),
+		}),
+		Entries: []string{
+			"/",
+		},
+		Output: fs.Path("."),
+		Fingerprint: func(c *Content) bool {
+			return filepath.Ext(c.Src.Path) == ".css"
 		},
 	}
 

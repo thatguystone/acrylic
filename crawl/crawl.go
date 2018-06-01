@@ -38,10 +38,11 @@ func Crawl(cfg Config) (map[string]*Content, error) {
 
 	cr := Crawler{
 		cfg:        cfg,
+		transforms: make(map[string][]Transform),
 		err:        make(Error),
 		content:    make(map[string]*Content),
-		transforms: make(map[string][]Transform),
-		claims:     make(map[string]*Content),
+		pages:      make(map[string]*Content),
+		outputs:    make(map[string]*Content),
 		used:       make(map[string]struct{}),
 	}
 
@@ -77,13 +78,15 @@ func Crawl(cfg Config) (map[string]*Content, error) {
 
 type Crawler struct {
 	cfg        Config
-	wg         sync.WaitGroup
-	mtx        sync.Mutex
-	err        Error
-	content    map[string]*Content
 	transforms map[string][]Transform
-	claims     map[string]*Content
-	used       map[string]struct{}
+	wg         sync.WaitGroup
+
+	mtx     sync.Mutex
+	err     Error
+	content map[string]*Content
+	pages   map[string]*Content
+	outputs map[string]*Content
+	used    map[string]struct{}
 }
 
 // Get gets Content by raw URL
@@ -108,21 +111,30 @@ func (cr *Crawler) GetRel(c *Content, rel string) *Content {
 
 // GetURL gets Content by URL
 func (cr *Crawler) GetURL(u *url.URL) *Content {
-	k := u.String()
+	uu := *u
+
+	// Avoid "." as a path
+	if uu.Path != "" {
+		uu.Path = path.Clean(uu.Path)
+	}
+
+	// Sort query
+	uu.RawQuery = uu.Query().Encode()
+
+	// Has no meaning server-side
+	uu.Fragment = ""
+
+	k := uu.String()
 
 	cr.mtx.Lock()
 
 	c, ok := cr.content[k]
 	if !ok {
-		c = newContent(cr, *u)
+		c = newContent(cr, uu)
 		cr.content[k] = c
 	}
 
 	cr.mtx.Unlock()
-
-	if !ok {
-		c.startLoad()
-	}
 
 	return c
 }
@@ -141,6 +153,19 @@ func (cr *Crawler) addError(file string, err error) {
 	cr.mtx.Unlock()
 }
 
+func (cr *Crawler) claimPage(c *Content, page string) (*Content, bool) {
+	cr.mtx.Lock()
+
+	claimer, ok := cr.pages[page]
+	if !ok {
+		cr.pages[page] = c
+	}
+
+	cr.mtx.Unlock()
+
+	return claimer, !ok
+}
+
 func (cr *Crawler) setUsed(file string) error {
 	abs, err := filepath.Abs(file)
 	if err != nil {
@@ -154,48 +179,28 @@ func (cr *Crawler) setUsed(file string) error {
 	return nil
 }
 
-func (cr *Crawler) claim(c *Content, file string) (bool, error) {
+func (cr *Crawler) claimOutput(c *Content, file string) error {
 	abs, err := filepath.Abs(file)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	cr.mtx.Lock()
 
-	using, inUse := cr.claims[abs]
+	using, inUse := cr.outputs[abs]
 	if !inUse {
-		cr.claims[abs] = c
+		cr.outputs[abs] = c
 		cr.used[abs] = struct{}{}
 	}
 
 	cr.mtx.Unlock()
 
-	if !inUse {
-		return true, nil
+	if inUse {
+		return AlreadyClaimedError{
+			Path: abs,
+			By:   using,
+		}
 	}
 
-	// If they're the same page but have different URLs (query params,
-	// fragments, etc), then the page is already written, so no need to claim
-	// it again.
-	if cr.samePage(c, using) {
-		return false, nil
-	}
-
-	return false, AlreadyClaimedError{
-		Path: abs,
-		By:   using,
-	}
-}
-
-func (cr *Crawler) samePage(a, b *Content) bool {
-	clean := func(u *url.URL) string {
-		uu := *u
-		uu.Path = path.Clean(u.Path)
-		uu.RawQuery = ""
-		uu.ForceQuery = false
-		uu.Fragment = ""
-		return uu.String()
-	}
-
-	return clean(&a.Src) == clean(&b.Src)
+	return nil
 }

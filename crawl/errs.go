@@ -24,9 +24,9 @@ func (err Error) add(path string, e error) {
 	err[path] = append(err[path], e)
 }
 
-func (err Error) Error() string {
-	const indent = "    "
+const ErrIndent = "    "
 
+func (err Error) Error() string {
 	var paths []string
 	for path := range err {
 		paths = append(paths, path)
@@ -38,10 +38,10 @@ func (err Error) Error() string {
 	b.WriteString("the following paths have errors:\n")
 
 	for _, path := range paths {
-		fmt.Fprintf(&b, indent+"%q\n", path)
+		fmt.Fprintf(&b, ErrIndent+"%q\n", path)
 
 		for _, err := range err[path] {
-			b.WriteString(stringc.Indent(err.Error(), indent+indent))
+			b.WriteString(stringc.Indent(err.Error(), ErrIndent+ErrIndent))
 			b.WriteString("\n")
 		}
 	}
@@ -54,7 +54,12 @@ type ResponseError struct {
 }
 
 func (err ResponseError) Error() string {
-	return fmt.Sprintf("http error: %d", err.Code)
+	var body string
+	if err.Body.Len() > 0 {
+		body = "\n" + stringc.Indent(err.Body.String(), ErrIndent)
+	}
+
+	return fmt.Sprintf("http error: %d%s", err.Code, body)
 }
 
 type MimeTypeMismatchError struct {

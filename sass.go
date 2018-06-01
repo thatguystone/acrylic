@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thatguystone/acrylic/crawl"
 	"github.com/thatguystone/cog/stringc"
 	"github.com/wellington/go-libsass"
 )
@@ -28,12 +29,12 @@ type Sass struct {
 }
 
 func (s *Sass) Start(*Watch) {
-	s.changed = make(chan struct{}, 1)
-	s.changed <- struct{}{}
-
 	if s.Logf == nil {
 		s.Logf = log.Printf
 	}
+
+	s.changed = make(chan struct{}, 1)
+	s.changed <- struct{}{}
 
 	// Lock, pending first build
 	s.rwmtx.Lock()
@@ -67,7 +68,7 @@ func (s *Sass) run() {
 				s.Entries, time.Since(start))
 		} else {
 			s.Logf("E: sass %s: rebuild failed:\n%v",
-				s.Entries, stringc.Indent(s.compileErr.Error(), indent))
+				s.Entries, stringc.Indent(s.compileErr.Error(), crawl.ErrIndent))
 		}
 	}
 }
@@ -133,7 +134,7 @@ func (s *Sass) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer s.rwmtx.RUnlock()
 
 	if s.compileErr != nil {
-		sendError(w, s.compileErr)
+		HTTPError(w, s.compileErr.Error(), http.StatusInternalServerError)
 		return
 	}
 

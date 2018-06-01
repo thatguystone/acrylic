@@ -39,20 +39,22 @@ func (mux ServeMux) MakeHandler() *http.ServeMux {
 // func (NoopHandler) Changed([]WatchEvents) {}
 // func (h NoopHandler) ServeHTTP() {}
 
-func sendError(w http.ResponseWriter, err error) {
+// HTTPError sends a human-readable HTTP error page
+func HTTPError(w http.ResponseWriter, err string, code int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusInternalServerError)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(code)
 
 	fmt.Fprintf(w, ""+
 		"<style>\n"+
 		"	body {\n"+
-		"		background: #252830;\n"+
+		"		background: #272822;\n"+
 		"		color: #fff;\n"+
 		"	}\n"+
 		"</style>\n"+
 		"<h1>Error</h1>\n"+
 		"<pre>%s</pre>\n",
-		html.EscapeString(err.Error()))
+		html.EscapeString(err))
 }
 
 func setCacheHeaders(w http.ResponseWriter) {

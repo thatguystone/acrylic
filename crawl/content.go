@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -18,124 +19,150 @@ import (
 
 // Content is what lives at a URL
 type Content struct {
-	Src         url.URL  // Original source location
+	Src         url.URL  // Original URL
 	Redirect    *Content // What this redirected to
-	Dst         string   // Where to write the body
+	Dst         url.URL  // Final, resolved URL
+	OutputPath  string   // File where this is stored
 	Fingerprint string   // Hash of content after all transforms
 	cr          *Crawler
-	loadWg      sync.WaitGroup
-	loaded      bool
+	load        struct {
+		done bool
+		wg   sync.WaitGroup
+	}
 }
 
 const (
-	// DefaultMime is the default content type that servers typically send
-	// back when they can't determine a file's type
-	DefaultMime = "application/octet-stream"
+	// DefaultType is the default content type that servers typically send back
+	// when they can't determine a file's type
+	DefaultType = "application/octet-stream"
+
+	// UserAgent is the agent sent with every crawler request
+	UserAgent = "acrylic/crawler"
 )
 
-func newContent(cr *Crawler, u url.URL) *Content {
-	c := &Content{
+func newContent(cr *Crawler, u url.URL) (c *Content) {
+	c = &Content{
 		Src: u,
+		Dst: u,
 		cr:  cr,
 	}
-	c.loadWg.Add(1)
 
-	return c
-}
+	if c.IsExternal() {
+		c.load.done = true
+	} else {
+		c.cr.wg.Add(1)
+		c.load.wg.Add(1)
+		go c.doLoad()
+	}
 
-func (c *Content) startLoad() {
-	c.cr.wg.Add(1)
-	go c.load()
+	return
 }
 
 func (c *Content) setLoaded() {
-	if !c.loaded {
-		c.loaded = true
-		c.loadWg.Done()
+	if !c.load.done {
+		c.load.done = true
+		c.load.wg.Done()
 	}
 }
 
-// Wait for the Content to finish loading.
 func (c *Content) waitLoaded() {
-	c.loadWg.Wait()
+	// Unfortunately, this can lead to deadlock if 2+ Contents rely on each
+	// other and haven't finished loading. It's quite complex to avoid this
+	// (you'd need a full dependency graph since you can have long loops like "a
+	// -> b -> c -> d -> a"), so rather than try to put something in that only
+	// works in a few, limited cases and gives a false sense of security, let's
+	// just consistently deadlock if it comes up.
+	//
+	// All things considered, this should be quite rare.
+	c.load.wg.Wait()
 }
 
-func (c *Content) load() {
+func (c *Content) doLoad() {
 	defer c.cr.wg.Done()
 	defer c.setLoaded()
 
-	if c.IsExternal() {
-		// External resource: nothing to do
-		return
-	}
-
-	err := c.process()
+	err := c.doRequest()
 	if err != nil {
 		c.cr.addError(c.Src.String(), err)
 	}
 }
 
-func (c *Content) process() error {
+func (c *Content) doRequest() error {
 	req, err := http.NewRequest("GET", c.Src.String(), nil)
 	if err != nil {
 		panic(err)
 	}
 
-	rr := httptest.NewRecorder()
-	c.cr.cfg.Handler.ServeHTTP(rr, req)
+	req.Header.Set("Accept", pathContentType+",*/*")
+	req.Header.Set("User-Agent", UserAgent)
 
-	switch rr.Code {
-	case http.StatusNotModified, http.StatusOK:
-		body, err := newBody(rr)
-		if err != nil {
-			return err
-		}
+	resp := httptest.NewRecorder()
+	c.cr.cfg.Handler.ServeHTTP(resp, req)
 
-		return c.processBody(body)
+	switch resp.Code {
+	case http.StatusOK:
+		return c.render(resp)
 
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
 		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 
-		c.Redirect = c.cr.GetRel(c, rr.HeaderMap.Get("Location"))
+		c.Redirect = c.cr.GetRel(c, resp.HeaderMap.Get("Location"))
 		return nil
 
 	default:
-		return ResponseError{rr}
+		return ResponseError{resp}
 	}
 }
 
-func (c *Content) processBody(body *body) error {
-	err := c.applyTransforms(body)
+func (c *Content) render(resp *httptest.ResponseRecorder) error {
+	body, err := newBody(resp)
 	if err != nil {
 		return err
 	}
 
-	// It's necessary to fingerprint after transforms so that any sub-
-	// resources with changed fingerprints change this resource's fingerprint.
-	if c.cr.cfg.Fingerprint(c) {
+	variant := resp.HeaderMap.Get(variantHeader)
+	if variant != "" {
+		dst, err := c.Dst.Parse(variant)
+		if err != nil {
+			return err
+		}
+
+		c.Dst = *dst
+	}
+
+	if claimer, ok := c.cr.claimPage(c, c.Dst.Path); !ok {
+		c.setAliasOf(claimer)
+		return nil
+	}
+
+	needsFingerprint := c.cr.cfg.Fingerprint(c)
+	if !needsFingerprint {
+		c.finalizeDest()
+	}
+
+	err = c.applyTransforms(body)
+	if err != nil {
+		return err
+	}
+
+	// It's necessary to fingerprint after transforms so that any sub-resources
+	// with changed fingerprints change this resource's fingerprint.
+	if needsFingerprint {
 		err := c.fingerprint(body)
 		if err != nil {
 			return err
 		}
+
+		c.finalizeDest()
 	}
 
-	dst := c.Src.Path
-
-	// If going to a directory, need to add an index.html
-	if strings.HasSuffix(dst, "/") {
-		dst += "index.html"
-	}
-
-	if c.Fingerprint != "" {
-		dst = addFingerprint(dst, c.Fingerprint)
-	}
-
-	c.Dst = filepath.Join(c.cr.cfg.Output, dst)
-	c.setLoaded()
 	c.checkMime(body)
 
-	ok, err := c.cr.claim(c, c.Dst)
-	if err != nil || !ok {
+	// Even though path has already been checked, it's possible that someone is
+	// writing paths with hashes that conflict. This shouldn't ever happen, but
+	// let's just be sure.
+	err = c.cr.claimOutput(c, c.OutputPath)
+	if err != nil {
 		return err
 	}
 
@@ -147,14 +174,14 @@ func (c *Content) processBody(body *body) error {
 			return err
 		}
 
-		return os.Symlink(body.symSrc, c.Dst)
+		return os.Symlink(body.symSrc, c.OutputPath)
 	}
 
 	if changed, err := c.bodyChanged(body); err != nil || !changed {
 		return err
 	}
 
-	f, err := cfs.Create(c.Dst)
+	f, err := cfs.Create(c.OutputPath)
 	if err != nil {
 		return err
 	}
@@ -169,11 +196,32 @@ func (c *Content) processBody(body *body) error {
 	return f.Close()
 }
 
+func (c *Content) setAliasOf(o *Content) {
+	o.waitLoaded()
+	c.Dst.Path = o.Dst.Path
+	c.OutputPath = o.OutputPath
+	c.Fingerprint = o.Fingerprint
+}
+
+func (c *Content) finalizeDest() {
+	// If going to a directory, need to add an index.html
+	if strings.HasSuffix(c.Dst.Path, "/") {
+		c.Dst.Path += "index.html"
+	}
+
+	if c.Fingerprint != "" {
+		c.Dst.Path = addFingerprint(c.Dst.Path, c.Fingerprint)
+	}
+
+	c.OutputPath = filepath.Join(c.cr.cfg.Output, c.Dst.Path)
+	c.setLoaded()
+}
+
 // bodyChanged determines if the dst file doesn't need to be written since
 // it's already the same as the source. This helps rsync by not changing mod
 // times.
 func (c *Content) bodyChanged(body *body) (changed bool, err error) {
-	f, err := os.Open(c.Dst)
+	f, err := os.Open(c.OutputPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			changed = true
@@ -242,10 +290,10 @@ func (c *Content) fingerprint(body *body) error {
 // for the generated file is consistent with the type that was originally sent
 // back.
 func (c *Content) checkMime(body *body) {
-	ext := filepath.Ext(c.Dst)
+	ext := filepath.Ext(c.OutputPath)
 	mimeType := mime.TypeByExtension(ext)
 	if mimeType == "" {
-		mimeType = DefaultMime
+		mimeType = DefaultType
 	}
 
 	guess, _, err := mime.ParseMediaType(mimeType)
@@ -272,21 +320,22 @@ func (c *Content) GetLinkTo(o *Content, link string) string {
 		return o.Src.String()
 	}
 
-	relative := false
-	switch c.cr.cfg.Links {
-	case AbsoluteLinks:
-		relative = false
-	case RelativeLinks:
-		relative = true
-	default:
-		relative = !path.IsAbs(link)
-	}
+	// relative := false
+	// switch c.cr.cfg.Links {
+	// case AbsoluteLinks:
+	// 	relative = false
+	// case RelativeLinks:
+	// 	relative = true
+	// default:
+	//	to := url.Parse(link)
+	// 	relative = !to.IsAbs()
+	// }
 
-	if relative {
-		return c.getRelLinkTo(o)
-	}
+	// if relative {
+	// 	return c.getRelLinkTo(o)
+	// }
 
-	return c.Src.ResolveReference(&o.Src).String()
+	return c.Dst.ResolveReference(&o.Dst).String()
 }
 
 func (c *Content) getRelLinkTo(o *Content) string {
@@ -325,7 +374,21 @@ func (c *Content) FollowRedirects() *Content {
 	curr := c
 	curr.waitLoaded()
 
+	seen := make(map[*Content]struct{})
 	for curr.Redirect != nil {
+		if _, ok := seen[curr]; ok {
+			panic(fmt.Errorf(
+				"redirect loop, starting at %q, saw %q again",
+				c.Src.String(), curr.Src.String()))
+		}
+
+		seen[curr] = struct{}{}
+		if len(seen) > 25 {
+			panic(fmt.Errorf(
+				"too many redirects, starting at %q, gave up at %q",
+				c.Src.String(), curr.Src.String()))
+		}
+
 		curr = curr.Redirect
 		curr.waitLoaded()
 	}

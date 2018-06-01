@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thatguystone/acrylic/crawl"
 	"github.com/thatguystone/cog/stringc"
 )
 
@@ -86,7 +87,7 @@ func (b *Bin) run() {
 					b.RunCmd[0], time.Since(start))
 			} else {
 				log.Printf("E: bin %s: rebuild failed:\n%v",
-					b.RunCmd[0], stringc.Indent(b.err.Error(), indent))
+					b.RunCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
 			}
 
 		case err := <-b.cmdErr:
@@ -95,7 +96,7 @@ func (b *Bin) run() {
 			b.rwmtx.Unlock()
 
 			log.Printf("E: bin %s: exited:\n%v",
-				b.RunCmd[0], stringc.Indent(b.err.Error(), indent))
+				b.RunCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
 		}
 	}
 }
@@ -159,7 +160,7 @@ func (b *Bin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer b.rwmtx.RUnlock()
 
 	if b.err != nil {
-		sendError(w, b.err)
+		HTTPError(w, b.err.Error(), http.StatusInternalServerError)
 	} else {
 		b.proxy.ServeHTTP(w, r)
 	}

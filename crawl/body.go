@@ -9,26 +9,47 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 type crawlPath struct {
-	ContentType string
-	Path        string
+	ContentType string // Content-Type of path
+	Path        string // Path where content lives
 }
 
-// PathContentType is sent in the Accept header when the crawler makes a
-// request for a resource.
-const PathContentType = "application/x-acrylic-path"
+const (
+	pathContentType = "application/x-acrylic-path"
+	variantHeader   = "X-Acrylic-Variant"
+)
 
-// Path is used to send a local path to the crawler rather than reading a file
-// into memory and sending that back. This is mainly for cases where you need to
-// send back a cached video, scaled image, etc.
-func Path(w http.ResponseWriter, contentType, path string) {
-	w.Header().Set("Content-Type", PathContentType)
+// ServeFile is like http.ServeFile, except that if the requester is acrylic's
+// crawler, it sends back the file's path rather than reading it into memory.
+func ServeFile(w http.ResponseWriter, r *http.Request, path string) {
+	if !strings.Contains(r.Header.Get("Accept"), pathContentType) {
+		http.ServeFile(w, r, path)
+		return
+	}
+
+	contType := mime.TypeByExtension(filepath.Ext(path))
+	if contType == "" {
+		contType = DefaultType
+	}
+
+	w.Header().Set("Content-Type", pathContentType)
 	json.NewEncoder(w).Encode(crawlPath{
-		ContentType: contentType,
+		ContentType: contType,
 		Path:        path,
 	})
+}
+
+// Variant sets the output name (and query string, if included) for the current
+// request. This is mainly useful for handlers that change their output based on
+// query string vals (eg. image scalers, css themes, etc).
+//
+// All links that point to original, requested page are rewritten.
+func Variant(w http.ResponseWriter, name string) {
+	w.Header().Set(variantHeader, name)
 }
 
 type body struct {
@@ -43,7 +64,7 @@ func newBody(resp *httptest.ResponseRecorder) (*body, error) {
 		contType: resp.HeaderMap.Get("Content-Type"),
 	}
 
-	if b.contType != PathContentType {
+	if b.contType != pathContentType {
 		b.buff = resp.Body
 	} else {
 		var cp crawlPath
