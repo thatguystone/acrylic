@@ -12,9 +12,9 @@ type cssTransform struct {
 }
 
 type cssMatch struct {
-	orig string
-	url  string
-	c    *Content
+	orig    string
+	url     string
+	linkRes LinkResolver
 }
 
 const cssType = "text/css"
@@ -43,9 +43,9 @@ func newCSSTransform(cr *Crawler, c *Content, css string) (tf cssTransform) {
 func (tf *cssTransform) extract(cr *Crawler, c *Content, re *regexp.Regexp) {
 	for _, m := range re.FindAllStringSubmatch(tf.css, -1) {
 		tf.matches = append(tf.matches, cssMatch{
-			orig: m[0],
-			url:  m[1],
-			c:    cr.GetRel(c, m[1]),
+			orig:    m[0],
+			url:     m[1],
+			linkRes: cr.ResolveLink(c, m[1]),
 		})
 	}
 }
@@ -54,7 +54,7 @@ func (tf cssTransform) get() []byte {
 	replaces := make([]string, 0, len(tf.matches)*2)
 
 	for _, match := range tf.matches {
-		rel := tf.c.GetLinkTo(match.c, match.url)
+		rel := match.linkRes.Get()
 
 		if match.url != rel {
 			replaces = append(replaces,

@@ -17,11 +17,11 @@ import (
 	"github.com/thatguystone/cog/cfs"
 )
 
-// Content is what lives at a URL
+// Content is what lives at a URL.
 type Content struct {
-	Src         url.URL  // Original URL
+	OrigURL     string   // URL without any changes
+	URL         url.URL  // Final URL
 	Redirect    *Content // What this redirected to
-	Dst         url.URL  // Final, resolved URL
 	OutputPath  string   // File where this is stored
 	Fingerprint string   // Hash of content after all transforms
 	cr          *Crawler
@@ -42,9 +42,9 @@ const (
 
 func newContent(cr *Crawler, u url.URL) (c *Content) {
 	c = &Content{
-		Src: u,
-		Dst: u,
-		cr:  cr,
+		OrigURL: u.String(),
+		URL:     u,
+		cr:      cr,
 	}
 
 	if c.IsExternal() {
@@ -83,12 +83,12 @@ func (c *Content) doLoad() {
 
 	err := c.doRequest()
 	if err != nil {
-		c.cr.addError(c.Src.String(), err)
+		c.cr.addError(c.OrigURL, err)
 	}
 }
 
 func (c *Content) doRequest() error {
-	req, err := http.NewRequest("GET", c.Src.String(), nil)
+	req, err := http.NewRequest("GET", c.URL.String(), nil)
 	if err != nil {
 		panic(err)
 	}
@@ -122,15 +122,15 @@ func (c *Content) render(resp *httptest.ResponseRecorder) error {
 
 	variant := resp.HeaderMap.Get(variantHeader)
 	if variant != "" {
-		dst, err := c.Dst.Parse(variant)
+		u, err := c.URL.Parse(variant)
 		if err != nil {
 			return err
 		}
 
-		c.Dst = *dst
+		c.URL = *u
 	}
 
-	if claimer, ok := c.cr.claimPage(c, c.Dst.Path); !ok {
+	if claimer, ok := c.cr.claimPage(c, c.URL.Path); !ok {
 		c.setAliasOf(claimer)
 		return nil
 	}
@@ -158,7 +158,7 @@ func (c *Content) render(resp *httptest.ResponseRecorder) error {
 
 	c.checkMime(body)
 
-	// Even though path has already been checked, it's possible that someone is
+	// Even though page has already been claimed, it's possible that someone is
 	// writing paths with hashes that conflict. This shouldn't ever happen, but
 	// let's just be sure.
 	err = c.cr.claimOutput(c, c.OutputPath)
@@ -170,6 +170,12 @@ func (c *Content) render(resp *httptest.ResponseRecorder) error {
 		// Need to mark the src as used so that it doesn't get cleaned up,
 		// leaving a broken symlink.
 		c.cr.setUsed(body.symSrc)
+
+		err := cfs.CreateParents(c.OutputPath)
+		if err != nil {
+			return err
+		}
+
 		return os.Symlink(body.symSrc, c.OutputPath)
 	}
 
@@ -194,22 +200,28 @@ func (c *Content) render(resp *httptest.ResponseRecorder) error {
 
 func (c *Content) setAliasOf(o *Content) {
 	o.waitLoaded()
-	c.Dst.Path = o.Dst.Path
+	c.URL.Path = o.URL.Path
 	c.OutputPath = o.OutputPath
 	c.Fingerprint = o.Fingerprint
 }
 
 func (c *Content) finalizeDest() {
+	outPath := c.URL.Path
+
 	// If going to a directory, need to add an index.html
-	if strings.HasSuffix(c.Dst.Path, "/") {
-		c.Dst.Path += "index.html"
+	if strings.HasSuffix(c.URL.Path, "/") {
+		outPath += "index.html"
 	}
 
 	if c.Fingerprint != "" {
-		c.Dst.Path = addFingerprint(c.Dst.Path, c.Fingerprint)
+		outPath = addFingerprint(outPath, c.Fingerprint)
+
+		// A fingerprint modifies the dest path, so need to reflect that back in
+		// the URL
+		c.URL.Path = outPath
 	}
 
-	c.OutputPath = filepath.Join(c.cr.cfg.Output, c.Dst.Path)
+	c.OutputPath = filepath.Join(c.cr.cfg.Output, outPath)
 	c.setLoaded()
 }
 
@@ -298,7 +310,7 @@ func (c *Content) checkMime(body *body) {
 	}
 
 	if guess != body.mediaType {
-		c.cr.addError(c.Src.String(), MimeTypeMismatchError{
+		c.cr.addError(c.URL.String(), MimeTypeMismatchError{
 			C:     c,
 			Ext:   ext,
 			Guess: guess,
@@ -309,38 +321,48 @@ func (c *Content) checkMime(body *body) {
 
 // GetLinkTo gets a link that references o's final location (following any
 // redirects) from c.
-func (c *Content) GetLinkTo(o *Content, link string) string {
-	o = o.FollowRedirects()
-
-	fmt.Println(o.Src.String(), link)
-
-	if o.IsExternal() {
-		return o.Src.String()
+func (c *Content) GetLinkTo(o *Content, origLink string) string {
+	u, err := url.Parse(origLink)
+	if err != nil {
+		panic(err)
 	}
 
-	// relative := false
-	// switch c.cr.cfg.Links {
-	// case AbsoluteLinks:
-	// 	relative = false
-	// case RelativeLinks:
-	// 	relative = true
-	// default:
-	//	to := url.Parse(link)
-	// 	relative = !to.IsAbs()
-	// }
+	return c.getLinkTo(o, u)
+}
 
-	// if relative {
-	// 	return c.getRelLinkTo(o)
-	// }
+func (c *Content) getLinkTo(o *Content, relURL *url.URL) string {
+	o = o.FollowRedirects()
 
-	return c.Dst.ResolveReference(&o.Dst).String()
+	link := o.URL
+	if !o.IsExternal() {
+		// relative := false
+		// switch c.cr.cfg.Links {
+		// case AbsoluteLinks:
+		// 	relative = false
+		// case RelativeLinks:
+		// 	relative = true
+		// default:
+		//	to := url.Parse(link)
+		// 	relative = !to.IsAbs()
+		// }
+
+		// if relative {
+		// 	return c.getRelLinkTo(o)
+		// }
+
+		link = *c.URL.ResolveReference(&o.URL)
+	}
+
+	link.Fragment = relURL.Fragment
+
+	return link.String()
 }
 
 func (c *Content) getRelLinkTo(o *Content) string {
 	const up = "../"
 
-	src := path.Clean(c.Src.Path)
-	dst := path.Clean(o.Src.Path)
+	src := path.Clean(c.URL.Path)
+	dst := path.Clean(o.URL.Path)
 
 	start := 0
 	for i := 0; i < len(src) && i < len(dst); i++ {
@@ -377,14 +399,14 @@ func (c *Content) FollowRedirects() *Content {
 		if _, ok := seen[curr]; ok {
 			panic(fmt.Errorf(
 				"redirect loop, starting at %q, saw %q again",
-				c.Src.String(), curr.Src.String()))
+				c.URL.String(), curr.URL.String()))
 		}
 
 		seen[curr] = struct{}{}
 		if len(seen) > 25 {
 			panic(fmt.Errorf(
 				"too many redirects, starting at %q, gave up at %q",
-				c.Src.String(), curr.Src.String()))
+				c.URL.String(), curr.URL.String()))
 		}
 
 		curr = curr.Redirect
@@ -396,5 +418,5 @@ func (c *Content) FollowRedirects() *Content {
 
 // IsExternal checks if this content refers to an external URL
 func (c *Content) IsExternal() bool {
-	return c.Src.Scheme != "" || c.Src.Opaque != "" || c.Src.Host != ""
+	return c.URL.Scheme != "" || c.URL.Opaque != "" || c.URL.Host != ""
 }

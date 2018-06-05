@@ -105,7 +105,7 @@ func (cr *Crawler) Get(rawURL string) *Content {
 
 // GetRel gets Content relative to the given Content
 func (cr *Crawler) GetRel(c *Content, rel string) *Content {
-	relU, err := c.Src.Parse(rel)
+	relU, err := c.URL.Parse(rel)
 	if err != nil {
 		panic(err)
 	}
@@ -131,6 +131,20 @@ func (cr *Crawler) GetURL(u *url.URL) *Content {
 	return c
 }
 
+// ResolveLink gets an async LinkResolver for replacing links
+func (cr *Crawler) ResolveLink(c *Content, link string) LinkResolver {
+	relURL, err := url.Parse(link)
+	if err != nil {
+		panic(err)
+	}
+
+	return LinkResolver{
+		From:   c,
+		To:     cr.GetURL(c.URL.ResolveReference(relURL)),
+		relURL: relURL,
+	}
+}
+
 func (cr *Crawler) addTransforms(contType string, ts ...Transform) {
 	cr.transforms[contType] = append(cr.transforms[contType], ts...)
 }
@@ -139,9 +153,9 @@ func (cr *Crawler) cleanup() error {
 	return nil
 }
 
-func (cr *Crawler) addError(file string, err error) {
+func (cr *Crawler) addError(path string, err error) {
 	cr.mtx.Lock()
-	cr.err.add(file, err)
+	cr.err.add(path, err)
 	cr.mtx.Unlock()
 }
 
@@ -205,9 +219,7 @@ type CrawlContent struct {
 func (cc *CrawlContent) normURL(u *url.URL) url.URL {
 	uu := *u
 
-	if uu.Path == "" {
-		uu.Path = "/"
-	} else {
+	if uu.Path != "" {
 		uu.Path = path.Clean(uu.Path)
 
 		// path.Clean removes trailing slashes, but they matter here
@@ -254,4 +266,16 @@ func (cc *CrawlContent) GetFile(path string) *Content {
 	}
 
 	return cc.files[abs]
+}
+
+// A LinkResolver is a helper for link replacement
+type LinkResolver struct {
+	From   *Content
+	To     *Content
+	relURL *url.URL
+}
+
+// Get gets the final link
+func (r LinkResolver) Get() string {
+	return r.From.getLinkTo(r.To, r.relURL)
 }

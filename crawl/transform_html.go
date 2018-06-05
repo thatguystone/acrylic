@@ -39,9 +39,9 @@ func transformHTML(cr *Crawler, c *Content, b []byte) ([]byte, error) {
 
 			switch attr.Key {
 			case "src", "href":
-				rc := cr.GetRel(c, attr.Val)
+				linkResr := cr.ResolveLink(c, attr.Val)
 				cbs = append(cbs, func() {
-					attr.Val = c.GetLinkTo(rc, attr.Val)
+					attr.Val = linkResr.Get()
 				})
 
 			case "srcset":

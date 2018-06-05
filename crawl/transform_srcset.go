@@ -6,22 +6,22 @@ import (
 )
 
 type srcSetTransform struct {
-	c      *Content
-	srcSet srcSet
-	cs     []*Content
+	c         *Content
+	srcSet    srcSet
+	linkReses []LinkResolver
 }
 
 func newSrcSetTransform(cr *Crawler, c *Content, val string) srcSetTransform {
 	srcSet := parseSrcSet(val)
 
 	tf := srcSetTransform{
-		c:      c,
-		srcSet: srcSet,
-		cs:     make([]*Content, len(srcSet)),
+		c:         c,
+		srcSet:    srcSet,
+		linkReses: make([]LinkResolver, len(srcSet)),
 	}
 
 	for i, src := range srcSet {
-		tf.cs[i] = cr.GetRel(c, src.url)
+		tf.linkReses[i] = cr.ResolveLink(c, src.url)
 	}
 
 	return tf
@@ -29,7 +29,7 @@ func newSrcSetTransform(cr *Crawler, c *Content, val string) srcSetTransform {
 
 func (tf srcSetTransform) get() string {
 	for i := range tf.srcSet {
-		tf.srcSet[i].url = tf.c.GetLinkTo(tf.cs[i], tf.srcSet[i].url)
+		tf.srcSet[i].url = tf.linkReses[i].Get()
 	}
 
 	return tf.srcSet.String()

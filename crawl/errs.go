@@ -65,8 +65,8 @@ func (err ResponseError) Error() string {
 type MimeTypeMismatchError struct {
 	C     *Content
 	Ext   string // Extension
-	Guess string
-	Got   string
+	Guess string // Guess from extension
+	Got   string // What was actually sent
 }
 
 func (err MimeTypeMismatchError) Error() string {
@@ -83,5 +83,5 @@ type AlreadyClaimedError struct {
 func (err AlreadyClaimedError) Error() string {
 	return fmt.Sprintf(
 		"path %q is already claimed by %s",
-		err.Path, err.By.Src.String())
+		err.Path, err.By.OrigURL)
 }
