@@ -29,16 +29,12 @@ func TestServeFile(t *testing.T) {
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
-			"/": stringHandler{
-				contType: htmlType,
-				body:     `<img src="img.gif">`,
-			},
 			"/img.gif": http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
 					ServeFile(w, r, fs.Path("img.gif"))
 				}),
 		}),
-		Entries: []string{"/"},
+		Entries: []string{"/img.gif"},
 		Output:  fs.Path("output"),
 	}
 
