@@ -522,14 +522,27 @@ func TestContentErrors(t *testing.T) {
 		},
 		{
 			name:    "ContentTypeMismatch",
-			errPath: "/",
+			errPath: "/page.html",
 			cfg: Config{
 				Handler: mux(map[string]http.Handler{
-					"/": stringHandler{
+					"/page.html": stringHandler{
 						contType: gifType,
 					},
 				}),
-				Entries: []string{"/"},
+				Entries: []string{"/page.html"},
+				Output:  ns.path("/public"),
+			},
+		},
+		{
+			name:    "UnknownContentTypeExtension",
+			errPath: "/page.not-an-ext",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/page.not-an-ext": stringHandler{
+						contType: gifType,
+					},
+				}),
+				Entries: []string{"/page.not-an-ext"},
 				Output:  ns.path("/public"),
 			},
 		},

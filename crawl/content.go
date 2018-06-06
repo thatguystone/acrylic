@@ -75,13 +75,17 @@ func (c *Content) waitLoaded() {
 	c.load.wg.Wait()
 }
 
+func (c *Content) addError(err error) {
+	c.cr.addError(c.OrigURL, err)
+}
+
 func (c *Content) doLoad() {
 	defer c.cr.wg.Done()
 	defer c.setLoaded()
 
 	err := c.doRequest()
 	if err != nil {
-		c.cr.addError(c.OrigURL, err)
+		c.addError(err)
 	}
 }
 
@@ -304,7 +308,7 @@ func (c *Content) checkMime(body *body) {
 	}
 
 	if guess != body.mediaType {
-		c.cr.addError(c.URL.String(), MimeTypeMismatchError{
+		c.addError(MimeTypeMismatchError{
 			C:     c,
 			Ext:   ext,
 			Guess: guess,
