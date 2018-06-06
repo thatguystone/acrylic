@@ -13,8 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/thatguystone/cog/cfs"
 )
 
 // Content is what lives at a URL.
@@ -88,11 +86,7 @@ func (c *Content) doLoad() {
 }
 
 func (c *Content) doRequest() error {
-	req, err := http.NewRequest("GET", c.URL.String(), nil)
-	if err != nil {
-		panic(err)
-	}
-
+	req := httptest.NewRequest("GET", c.URL.String(), nil)
 	req.Header.Set("Accept", pathContentType+",*/*")
 	req.Header.Set("User-Agent", UserAgent)
 
@@ -166,15 +160,15 @@ func (c *Content) render(resp *httptest.ResponseRecorder) error {
 		return err
 	}
 
+	err = os.MkdirAll(filepath.Dir(c.OutputPath), 0777)
+	if err != nil {
+		return err
+	}
+
 	if body.canSymlink() {
 		// Need to mark the src as used so that it doesn't get cleaned up,
 		// leaving a broken symlink.
 		c.cr.setUsed(body.symSrc)
-
-		err := cfs.CreateParents(c.OutputPath)
-		if err != nil {
-			return err
-		}
 
 		return os.Symlink(body.symSrc, c.OutputPath)
 	}
@@ -183,7 +177,7 @@ func (c *Content) render(resp *httptest.ResponseRecorder) error {
 		return err
 	}
 
-	f, err := cfs.Create(c.OutputPath)
+	f, err := os.Create(c.OutputPath)
 	if err != nil {
 		return err
 	}

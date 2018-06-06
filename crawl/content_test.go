@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -36,8 +35,8 @@ func (h stringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func TestContentAutoAddIndex(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -47,22 +46,22 @@ func TestContentAutoAddIndex(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 	}
 
 	cont, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
 	index := cont.GetPage("/")
-	c.Equal(index.OutputPath, fs.Path("/index.html"))
+	c.Equal(index.OutputPath, ns.path("/public/index.html"))
 }
 
 func TestContentRedirect(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -80,22 +79,22 @@ func TestContentRedirect(t *testing.T) {
 				}),
 		}),
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
-	index := fs.SReadFile("index.html")
+	index := ns.readFile("/public/index.html")
 	c.Contains(index, "/other-page/")
 }
 
 func TestContentFingerprint(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -109,7 +108,7 @@ func TestContentFingerprint(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 		Fingerprint: func(c *Content) bool {
 			return filepath.Ext(c.URL.Path) == ".css"
 		},
@@ -117,21 +116,21 @@ func TestContentFingerprint(t *testing.T) {
 
 	cont, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
 	allCSS := cont.GetPage("/all.css")
 	c.NotLen(allCSS.Fingerprint, 0)
 	c.Contains(allCSS.URL.Path, allCSS.Fingerprint)
 
-	index := fs.SReadFile("index.html")
+	index := ns.readFile("/public/index.html")
 	c.Contains(index, allCSS.URL.Path)
 }
 
 func TestContentAlias(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -147,12 +146,12 @@ func TestContentAlias(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 	}
 
 	cont, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
 	p1 := cont.Get("/page/?p=1")
 	c.Equal(p1.URL.RawQuery, "p=1")
@@ -198,40 +197,40 @@ var variantHandler = mux(map[string]http.Handler{
 func TestContentVariant(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: variantHandler,
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 	}
 
 	cont, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
 	c.Equal(cont.Get("/people/?who=bob").URL.Path, "/people/bob.html")
 	c.Equal(cont.Get("/people/?who=alice").URL.Path, "/people/alice.html")
 
-	index := fs.SReadFile("index.html")
+	index := ns.readFile("/public/index.html")
 	c.Contains(index, "people/bob.html")
 	c.Contains(index, "people/alice.html")
 
-	c.Equal(fs.SReadFile("people/bob.html"), "bob is a person")
-	c.Equal(fs.SReadFile("people/alice.html"), "alice is cool")
+	c.Equal(ns.readFile("/public/people/bob.html"), "bob is a person")
+	c.Equal(ns.readFile("/public/people/alice.html"), "alice is cool")
 }
 
 func TestContentVariantFingerprint(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: variantHandler,
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 		Fingerprint: func(c *Content) bool {
 			return c.URL.Path != "/"
 		},
@@ -239,7 +238,7 @@ func TestContentVariantFingerprint(t *testing.T) {
 
 	cont, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
 	bob := cont.Get("/people/?who=bob")
 	c.NotContains(bob.URL.Path, "bob.html")
@@ -249,19 +248,20 @@ func TestContentVariantFingerprint(t *testing.T) {
 	c.NotContains(alice.URL.Path, "alice.html")
 	c.NotEqual(alice.Fingerprint, "")
 
-	index := fs.SReadFile("index.html")
+	index := ns.readFile("/public/index.html")
 	c.Contains(index, bob.Fingerprint)
 	c.Contains(index, alice.Fingerprint)
 
-	c.Equal(fs.SReadFile(bob.URL.Path), "bob is a person")
-	c.Equal(fs.SReadFile(alice.URL.Path), "alice is cool")
+	c.Equal(
+		ns.readFile(filepath.Join("/public", bob.URL.Path)),
+		"bob is a person")
+	c.Equal(
+		ns.readFile(filepath.Join("/public", alice.URL.Path)),
+		"alice is cool")
 }
 
 func TestContentURLFragment(t *testing.T) {
 	c := check.New(t)
-
-	fs, clean := c.FS()
-	defer clean()
 
 	links := []string{
 		"//google.com#frag-1",
@@ -276,6 +276,9 @@ func TestContentURLFragment(t *testing.T) {
 		body += fmt.Sprintf(`<a href="%s"></a>`, link)
 	}
 
+	ns := newTestNS(c, nil)
+	defer ns.clean()
+
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
 			"/": stringHandler{
@@ -288,14 +291,14 @@ func TestContentURLFragment(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
-	index := fs.SReadFile("index.html")
+	index := ns.readFile("/public/index.html")
 	for _, link := range links {
 		c.Contains(index, link)
 	}
@@ -304,12 +307,12 @@ func TestContentURLFragment(t *testing.T) {
 func TestContentBodyChanged(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
-
-	fs.SWriteFile("index.html", "index")
-	fs.SWriteFile("page/1/index.html", "page 0")
-	fs.SWriteFile("page/2/index.html", "totally different")
+	ns := newTestNS(c, map[string][]byte{
+		"/public/index.html":        []byte("index"),
+		"/public/page/1/index.html": []byte("page 0"),
+		"/public/page/2/index.html": []byte("totally different"),
+	})
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -331,110 +334,23 @@ func TestContentBodyChanged(t *testing.T) {
 			"/page/1/",
 			"/page/2/",
 		},
-		Output: fs.Path("."),
+		Output: ns.path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
-	c.Equal(fs.SReadFile("index.html"), "index")
-	c.Equal(fs.SReadFile("page/1/index.html"), "page 1")
-	c.Equal(fs.SReadFile("page/2/index.html"), "page 2")
-}
-
-func TestContentContentError(t *testing.T) {
-	c := check.New(t)
-
-	fs, clean := c.FS()
-	defer clean()
-
-	cfg := Config{
-		Handler: http.HandlerFunc(http.NotFound),
-		Entries: []string{"/"},
-		Output:  fs.Path("."),
-	}
-
-	_, err := Crawl(cfg)
-	c.Must.NotNil(err)
-	c.Equal(err.(Error)["/"][0].(ResponseError).Code, http.StatusNotFound)
-}
-
-func TestContentInvalidMimeType(t *testing.T) {
-	c := check.New(t)
-
-	fs, clean := c.FS()
-	defer clean()
-
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
-			"/": stringHandler{
-				contType: "invalid; ======",
-			},
-		}),
-		Entries: []string{"/"},
-		Output:  fs.Path("."),
-	}
-
-	_, err := Crawl(cfg)
-	c.Must.NotNil(err)
-	c.Equal(err, Error{
-		"/": {
-			mime.ErrInvalidMediaParameter,
-		},
-	})
-}
-
-func TestContentTransformBodyError(t *testing.T) {
-	c := check.New(t)
-
-	fs, clean := c.FS()
-	defer clean()
-
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
-			"/all.css": http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					ServeFile(w, r, fs.Path("doesnt-exist.css"))
-				}),
-		}),
-		Entries: []string{"/all.css"},
-		Output:  fs.Path("."),
-	}
-
-	_, err := Crawl(cfg)
-	c.Must.NotNil(err)
-	c.Contains(err, "/all.css")
-}
-
-func TestContentFingerprintError(t *testing.T) {
-	c := check.New(t)
-
-	fs, clean := c.FS()
-	defer clean()
-
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
-			"/img.gif": http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					ServeFile(w, r, fs.Path("doesnt-exist.gif"))
-				}),
-		}),
-		Entries:     []string{"/img.gif"},
-		Output:      fs.Path("."),
-		Fingerprint: func(c *Content) bool { return true },
-	}
-
-	_, err := Crawl(cfg)
-	c.Must.NotNil(err)
-	c.Contains(err, "/img.gif")
+	c.Equal(ns.readFile("/public/index.html"), "index")
+	c.Equal(ns.readFile("/public/page/1/index.html"), "page 1")
+	c.Equal(ns.readFile("/public/page/2/index.html"), "page 2")
 }
 
 func TestContentOutputCollision(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	gifPrint, err := fingerprint(bytes.NewReader(gifBin))
 	c.Must.Nil(err)
@@ -459,7 +375,7 @@ func TestContentOutputCollision(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 		Fingerprint: func(c *Content) bool {
 			return strings.Contains(c.URL.Path, "img.gif")
 		},
@@ -470,15 +386,18 @@ func TestContentOutputCollision(t *testing.T) {
 
 	c.Len(err, 1)
 	for _, errs := range err.(Error) {
-		c.Equal(errs[0].(AlreadyClaimedError).Path, fs.Path(gifPath))
+		c.Equal(
+			errs[0].(AlreadyClaimedError).Path,
+			ns.path(filepath.Join("/public/", gifPath)))
+		c.Contains(errs[0].Error(), "already claimed by")
 	}
 }
 
 func TestContentRedirectLoop(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	called := false
 
@@ -494,7 +413,7 @@ func TestContentRedirectLoop(t *testing.T) {
 				}),
 		}),
 		Entries: []string{"/entry.txt"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 		Transforms: map[string][]Transform{
 			"text/plain": {
 				func(cr *Crawler, cc *Content, b []byte) ([]byte, error) {
@@ -510,7 +429,7 @@ func TestContentRedirectLoop(t *testing.T) {
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
 	c.True(called)
 }
@@ -518,8 +437,8 @@ func TestContentRedirectLoop(t *testing.T) {
 func TestContentTooManyRedirects(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	i := 0
 	called := false
@@ -547,7 +466,7 @@ func TestContentTooManyRedirects(t *testing.T) {
 				}),
 		}),
 		Entries: []string{"/entry.txt"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 		Transforms: map[string][]Transform{
 			"text/plain": {
 				func(cr *Crawler, cc *Content, b []byte) ([]byte, error) {
@@ -563,7 +482,107 @@ func TestContentTooManyRedirects(t *testing.T) {
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
 	c.True(called)
+}
+
+func TestContentErrors(t *testing.T) {
+	c := check.New(t)
+
+	ns := newTestNS(c, nil)
+	defer ns.clean()
+
+	tests := []struct {
+		name    string
+		errPath string
+		cfg     Config
+	}{
+		{
+			name:    "Basic404",
+			errPath: "/",
+			cfg: Config{
+				Handler: http.HandlerFunc(http.NotFound),
+				Entries: []string{"/"},
+				Output:  ns.path("/public"),
+			},
+		},
+		{
+			name:    "InvalidContentType",
+			errPath: "/",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/": stringHandler{
+						contType: "invalid; ======",
+					},
+				}),
+				Entries: []string{"/"},
+				Output:  ns.path("/public"),
+			},
+		},
+		{
+			name:    "ContentTypeMismatch",
+			errPath: "/",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/": stringHandler{
+						contType: gifType,
+					},
+				}),
+				Entries: []string{"/"},
+				Output:  ns.path("/public"),
+			},
+		},
+		{
+			name:    "ServeNonExistent",
+			errPath: "/all.css",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/all.css": http.HandlerFunc(
+						func(w http.ResponseWriter, r *http.Request) {
+							ServeFile(w, r, ns.path("doesnt-exist.css"))
+						}),
+				}),
+				Entries: []string{"/all.css"},
+				Output:  ns.path("/public"),
+			},
+		},
+		{
+			name:    "FingerprintNonExistent",
+			errPath: "/img.gif",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/img.gif": http.HandlerFunc(
+						func(w http.ResponseWriter, r *http.Request) {
+							ServeFile(w, r, ns.path("doesnt-exist.gif"))
+						}),
+				}),
+				Entries:     []string{"/img.gif"},
+				Output:      ns.path("/public"),
+				Fingerprint: func(c *Content) bool { return true },
+			},
+		},
+		{
+			name:    "InvalidVariantURL",
+			errPath: "/",
+			cfg: Config{
+				Handler: http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						Variant(w, "://")
+					}),
+				Entries: []string{"/"},
+				Output:  ns.path("/public"),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+
+		c.Run(test.name, func(c *check.C) {
+			_, err := Crawl(test.cfg)
+			c.Log(err)
+			c.Contains(err, test.errPath)
+		})
+	}
 }

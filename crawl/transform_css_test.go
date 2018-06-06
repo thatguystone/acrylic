@@ -10,8 +10,8 @@ import (
 func TestTransformCSSBasic(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -30,23 +30,23 @@ func TestTransformCSSBasic(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/all.css"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
-	all := fs.SReadFile("all.css")
-	c.NotContains(all, "/r/")
+	all := ns.readFile("/public/all.css")
 	c.Contains(all, "/f/")
+	c.NotContains(all, "/r/")
 }
 
 func TestTransformCSSError(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -56,7 +56,7 @@ func TestTransformCSSError(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/all.css"},
-		Output:  fs.Path("."),
+		Output:  ns.path("/public"),
 	}
 
 	_, err := Crawl(cfg)

@@ -10,8 +10,8 @@ import (
 func TestTransformHTMLInlineStyles(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -25,21 +25,21 @@ func TestTransformHTMLInlineStyles(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("."),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
-	fs.FileExists("img.gif")
+	ns.checkFileExists("img.gif")
 }
 
 func TestTransformHTMLCoverage(t *testing.T) {
 	c := check.New(t)
 
-	fs, clean := c.FS()
-	defer clean()
+	ns := newTestNS(c, nil)
+	defer ns.clean()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -61,14 +61,14 @@ func TestTransformHTMLCoverage(t *testing.T) {
 			},
 		}),
 		Entries: []string{"/"},
-		Output:  fs.Path("."),
+		Output:  ns.path("."),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	fs.DumpTree(".")
+	ns.dumpTree()
 
-	index := fs.SReadFile("index.html")
+	index := ns.readFile("index.html")
 	c.NotContains(index, "/r/")
 	c.Contains(index, "/f/")
 }

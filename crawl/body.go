@@ -89,6 +89,10 @@ func newBody(resp *httptest.ResponseRecorder) (*body, error) {
 	return &b, nil
 }
 
+func (b *body) canSymlink() bool {
+	return b.symSrc != ""
+}
+
 func (b *body) setContent(s []byte) {
 	b.symSrc = ""
 	b.buff = bytes.NewBuffer(s)
@@ -114,8 +118,4 @@ func (b *body) getReader() (io.ReadCloser, error) {
 	}
 
 	return ioutil.NopCloser(bytes.NewReader(b.buff.Bytes())), nil
-}
-
-func (b *body) canSymlink() bool {
-	return b.symSrc != ""
 }
