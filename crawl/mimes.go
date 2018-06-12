@@ -33,7 +33,7 @@ func checkServeMime(path, respMediaType string) error {
 	if respMediaType != mediaType {
 		return MimeTypeMismatchError{
 			Ext:          ext,
-			Guess:        mimeType,
+			Guess:        mediaType,
 			FromResponse: respMediaType,
 		}
 	}

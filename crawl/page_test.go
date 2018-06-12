@@ -1,6 +1,7 @@
 package crawl
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -106,23 +107,35 @@ func TestPageAlias(t *testing.T) {
 	c.Equal(p1.Fingerprint, p2.Fingerprint)
 }
 
-func TestPageServeFile(t *testing.T) {
+func TestPageServeFileSymlinks(t *testing.T) {
 	c := check.New(t)
 
 	tmp := newTmpDir(c, map[string]string{
+		"/stuff":     `stuff`,
 		"/stuff.txt": `stuff`,
+		"/stuff.css": ` body { } `,
 	})
 	defer tmp.remove()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
+			"/stuff": http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					ServeFile(w, r, tmp.path("/stuff"))
+				}),
 			"/stuff.txt": http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
 					ServeFile(w, r, tmp.path("/stuff.txt"))
 				}),
+			"/stuff.css": http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					ServeFile(w, r, tmp.path("/stuff.css"))
+				}),
 		}),
 		Entries: []*url.URL{
+			{Path: "/stuff"},
 			{Path: "/stuff.txt"},
+			{Path: "/stuff.css"},
 		},
 		Output: tmp.path("/public"),
 	}
@@ -131,10 +144,21 @@ func TestPageServeFile(t *testing.T) {
 	c.Must.Nil(err)
 	tmp.dumpTree()
 
-	symSrc, err := os.Readlink(tmp.path("/public/stuff.txt"))
-	c.Nil(err)
+	symSrc, err := os.Readlink(tmp.path("/public/stuff"))
+	c.Must.Nil(err)
+	c.Equal(symSrc, tmp.path("/stuff"))
+	c.Equal(tmp.readFile("/public/stuff"), `stuff`)
+
+	symSrc, err = os.Readlink(tmp.path("/public/stuff.txt"))
+	c.Must.Nil(err)
 	c.Equal(symSrc, tmp.path("/stuff.txt"))
 	c.Equal(tmp.readFile("/public/stuff.txt"), `stuff`)
+
+	// Files with transforms shouldn't be linked
+	symSrc, err = os.Readlink(tmp.path("/public/stuff.css"))
+	c.NotNil(err)
+	c.Equal(symSrc, "")
+	c.Equal(tmp.readFile("/public/stuff.css"), `body{}`)
 }
 
 var variantHandler = mux(map[string]http.Handler{
@@ -360,21 +384,49 @@ func TestPageBodyChanged(t *testing.T) {
 func TestPageErrors(t *testing.T) {
 	c := check.New(t)
 
+	_, cssOpenErr := os.Open("/doesnt-exist.css")
+	_, gifOpenErr := os.Open("/doesnt-exist.gif")
+
 	tests := []struct {
-		name    string
-		errPath string
-		cfg     Config
+		name string
+		cfg  Config
+		err  SiteError
 	}{
 		{
-			name:    "Basic404",
-			errPath: "/",
+			name: "Basic404",
 			cfg: Config{
 				Handler: http.HandlerFunc(http.NotFound),
 			},
+			err: SiteError{
+				"/": {
+					ResponseError{
+						Status: http.StatusNotFound,
+						Body:   []byte(`404 page not found` + "\n"),
+					},
+				},
+			},
 		},
 		{
-			name:    "InvalidContentType",
-			errPath: "/",
+			name: "TransformError",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/all.css": stringHandler{
+						contType: cssType,
+						body:     `body { invalid`,
+					},
+				}),
+				Entries: []*url.URL{
+					&url.URL{Path: "/all.css"},
+				},
+			},
+			err: SiteError{
+				"/all.css": {
+					errors.New("unexpected token in declaration, expected colon token"),
+				},
+			},
+		},
+		{
+			name: "InvalidContentType",
 			cfg: Config{
 				Handler: mux(map[string]http.Handler{
 					"/": stringHandler{
@@ -382,10 +434,12 @@ func TestPageErrors(t *testing.T) {
 					},
 				}),
 			},
+			err: SiteError{
+				"/": {errors.New("mime: invalid media parameter")},
+			},
 		},
 		{
-			name:    "ContentTypeMismatch",
-			errPath: "/page.html",
+			name: "ContentTypeMismatch",
 			cfg: Config{
 				Handler: mux(map[string]http.Handler{
 					"/page.html": stringHandler{
@@ -396,10 +450,18 @@ func TestPageErrors(t *testing.T) {
 					&url.URL{Path: "/page.html"},
 				},
 			},
+			err: SiteError{
+				"/page.html": {
+					MimeTypeMismatchError{
+						Ext:          ".html",
+						Guess:        htmlType,
+						FromResponse: gifType,
+					},
+				},
+			},
 		},
 		{
-			name:    "UnknownContentTypeExtension",
-			errPath: "/page.not-an-ext",
+			name: "UnknownContentTypeExtension",
 			cfg: Config{
 				Handler: mux(map[string]http.Handler{
 					"/page.not-an-ext": stringHandler{
@@ -410,10 +472,18 @@ func TestPageErrors(t *testing.T) {
 					&url.URL{Path: "/page.not-an-ext"},
 				},
 			},
+			err: SiteError{
+				"/page.not-an-ext": {
+					MimeTypeMismatchError{
+						Ext:          ".not-an-ext",
+						Guess:        DefaultType,
+						FromResponse: gifType,
+					},
+				},
+			},
 		},
 		{
-			name:    "ServeNonExistent",
-			errPath: "/all.css",
+			name: "TransformNonExistentServeFile",
 			cfg: Config{
 				Handler: mux(map[string]http.Handler{
 					"/all.css": http.HandlerFunc(
@@ -425,10 +495,12 @@ func TestPageErrors(t *testing.T) {
 					&url.URL{Path: "/all.css"},
 				},
 			},
+			err: SiteError{
+				"/all.css": {cssOpenErr},
+			},
 		},
 		{
-			name:    "FingerprintNonExistent",
-			errPath: "/img.gif",
+			name: "FingerprintNonExistent",
 			cfg: Config{
 				Handler: mux(map[string]http.Handler{
 					"/img.gif": http.HandlerFunc(
@@ -439,22 +511,76 @@ func TestPageErrors(t *testing.T) {
 				Entries: []*url.URL{
 					&url.URL{Path: "/img.gif"},
 				},
-				Fingerprint: func(u *url.URL, mediaType string) bool { return true },
+				Fingerprint: func(u *url.URL, mediaType string) bool {
+					return true
+				},
+			},
+			err: SiteError{
+				"/img.gif": {gifOpenErr},
 			},
 		},
 		{
-			name:    "InvalidVariantURL",
-			errPath: "/",
+			name: "InvalidHref",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/": stringHandler{
+						contType: htmlType,
+						body:     `<a href="://"></a>`,
+					},
+				}),
+			},
+			err: SiteError{
+				"/": {
+					&url.Error{
+						Op:  "parse",
+						URL: "://",
+						Err: errors.New("missing protocol scheme"),
+					},
+				},
+			},
+		},
+		{
+			name: "InvalidVariantURL",
 			cfg: Config{
 				Handler: http.HandlerFunc(
 					func(w http.ResponseWriter, r *http.Request) {
 						Variant(w, "://")
 					}),
 			},
+			err: SiteError{
+				"/": {
+					&url.Error{
+						Op:  "parse",
+						URL: "://",
+						Err: errors.New("missing protocol scheme"),
+					},
+				},
+			},
+		},
+		{
+			name: "InvalidRedirectURL",
+			cfg: Config{
+				Handler: http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Set("Location", "://")
+						w.WriteHeader(http.StatusFound)
+					}),
+			},
+			err: SiteError{
+				"/": {
+					&url.Error{
+						Op:  "parse",
+						URL: "://",
+						Err: errors.New("missing protocol scheme"),
+					},
+				},
+			},
 		},
 	}
 
 	for _, test := range tests {
+		test := test
+
 		c.Run(test.name, func(c *check.C) {
 			tmp := newTmpDir(c, nil)
 			defer tmp.remove()
@@ -462,16 +588,10 @@ func TestPageErrors(t *testing.T) {
 			test.cfg.Output = tmp.path("/public")
 
 			_, err := Crawl(test.cfg)
-			c.Log(err)
-			c.Contains(err, test.errPath)
+			c.Equal(err, test.err)
+			if err != nil {
+				c.Equal(err.Error(), test.err.Error())
+			}
 		})
 	}
-}
-
-func TestPageOSErrors(t *testing.T) {
-	c := check.New(t)
-
-	c.UntilNil(100, func() error {
-		return nil
-	})
 }

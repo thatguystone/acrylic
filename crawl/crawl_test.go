@@ -105,6 +105,7 @@ func TestCrawlClaimCollision(t *testing.T) {
 			}
 
 			c.Equal(cr.err, test.err)
+			c.Equal(cr.err.Error(), test.err.Error())
 		})
 	}
 }
@@ -195,6 +196,7 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 			}
 
 			c.Equal(cr.err, test.err)
+			c.Equal(cr.err.Error(), test.err.Error())
 		})
 	}
 }

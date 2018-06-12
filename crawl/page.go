@@ -143,8 +143,8 @@ func (pg *Page) render(resp *response) error {
 		return err
 	}
 
-	// It's necessary to fingerprint after transforms so that any sub-resources
-	// with changed fingerprints change this resource's fingerprint.
+	// Fingerprint after transforms so that any sub-resources with changed
+	// fingerprints change this resource's fingerprint.
 	if needsFingerprint {
 		err := pg.fingerprint(resp)
 		if err != nil {
