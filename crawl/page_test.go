@@ -3,6 +3,7 @@ package crawl
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -107,13 +108,53 @@ func TestPageAlias(t *testing.T) {
 	c.Equal(p1.Fingerprint, p2.Fingerprint)
 }
 
+func TestPageOverwriteExistingOutputs(t *testing.T) {
+	c := check.New(t)
+
+	tmp := newTmpDir(c, map[string]string{
+		"/public/index.html/is/a/dir/index.html": `not index`,
+		"/public/about.html":                     `not about`,
+		"/public/img.gif":                        `not a gif`,
+	})
+	defer tmp.remove()
+
+	cfg := Config{
+		Handler: mux(map[string]http.Handler{
+			"/": stringHandler{
+				contType: htmlType,
+				body: `` +
+					`<img src="/img.gif">` +
+					`<a href="/about.html">about</a>`,
+			},
+			"/about.html": stringHandler{
+				contType: htmlType,
+				body:     `about`,
+			},
+			"/img.gif": stringHandler{
+				contType: gifType,
+				body:     string(gifBin),
+			},
+		}),
+		Output: tmp.path("/public"),
+	}
+
+	_, err := Crawl(cfg)
+	c.Nil(err)
+
+	c.Equal(tmp.readFile("/public/about.html"), `about`)
+	c.Equal(tmp.readFile("/public/img.gif"), string(gifBin))
+}
+
 func TestPageServeFileSymlinks(t *testing.T) {
 	c := check.New(t)
 
 	tmp := newTmpDir(c, map[string]string{
-		"/stuff":     `stuff`,
-		"/stuff.txt": `stuff`,
-		"/stuff.css": ` body { } `,
+		"/stuff":                     `stuff`,
+		"/stuff.txt":                 `stuff`,
+		"/stuff.css":                 ` body { } `,
+		"/public/stuff/is/a/dir":     `not stuff`,
+		"/public/stuff.txt/is/a/dir": `not stuff`,
+		"/public/stuff.css/is/a/dir": `not stuff`,
 	})
 	defer tmp.remove()
 
@@ -331,12 +372,87 @@ func TestPageRedirect(t *testing.T) {
 		Output: tmp.path("/public"),
 	}
 
-	_, err := Crawl(cfg)
+	site, err := Crawl(cfg)
 	c.Nil(err)
 
 	index := tmp.readFile("/public/index.html")
 	c.Contains(index, "/f/")
 	c.NotContains(index, "/r/")
+
+	c.Equal(
+		site.Get(&url.URL{Path: "/r/"}).FollowRedirects().URL.String(),
+		"/f/")
+}
+
+func TestPageRedirectLoopError(t *testing.T) {
+	c := check.New(t)
+
+	tmp := newTmpDir(c, nil)
+	defer tmp.remove()
+
+	cfg := Config{
+		Handler: mux(map[string]http.Handler{
+			"/": stringHandler{
+				contType: htmlType,
+				body:     `<a href="/infinite/">inf</a>`,
+			},
+			"/infinite/": http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					http.Redirect(w, r, "/infinite/", http.StatusFound)
+				}),
+		}),
+		Output: tmp.path("/public"),
+	}
+
+	_, err := Crawl(cfg)
+	c.Equal(err, SiteError{
+		"/": {
+			RedirectLoopError{
+				Start: "/infinite/",
+				End:   "/infinite/",
+			},
+		},
+	})
+}
+
+func TestPageRedirectErrors(t *testing.T) {
+	c := check.New(t)
+
+	tmp := newTmpDir(c, nil)
+	defer tmp.remove()
+
+	i := 0
+
+	cfg := Config{
+		Handler: mux(map[string]http.Handler{
+			"/": stringHandler{
+				contType: htmlType,
+				body:     `<a href="/deep/">deep</a>`,
+			},
+			"/deep/": http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					if i > maxRedirects {
+						w.Header().Set("Content-Type", DefaultType)
+						io.WriteString(w, "done")
+					} else {
+						i++
+						to := fmt.Sprintf("/deep/%d", i)
+						http.Redirect(w, r, to, http.StatusFound)
+					}
+				}),
+		}),
+		Output: tmp.path("/public"),
+	}
+
+	_, err := Crawl(cfg)
+	c.Equal(err, SiteError{
+		"/": {
+			TooManyRedirectsError{
+				Start: "/deep/",
+				End:   "/deep/25",
+			},
+		},
+	})
 }
 
 func TestPageBodyChanged(t *testing.T) {

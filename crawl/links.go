@@ -27,36 +27,39 @@ type linkResolver Page
 
 func (lr *linkResolver) ResolveLink(link string) ResolvedLinker {
 	pg := (*Page)(lr)
+	rl := resolvedLink{
+		orig: link,
+		from: pg,
+	}
 
 	relURL, err := pg.OrigURL.Parse(link)
 	if err != nil {
 		pg.addError(err)
-		return &resolvedLink{
-			invalid: link,
-		}
+	} else {
+		rl.to = pg.cr.get(relURL)
+		rl.frag = relURL.Fragment
 	}
 
-	return &resolvedLink{
-		from: pg,
-		to:   pg.cr.get(relURL),
-		frag: relURL.Fragment,
-	}
+	return &rl
 }
 
 type resolvedLink struct {
-	invalid string // Only set if couldn't parse link
-
+	orig string
 	from *Page
 	to   *Page
 	frag string
 }
 
 func (rl *resolvedLink) Get() string {
-	if rl.invalid != "" {
-		return rl.invalid
+	if rl.to == nil {
+		return rl.orig
 	}
 
-	to := rl.to.FollowRedirects()
+	to, err := rl.to.followRedirects()
+	if err != nil {
+		rl.from.addError(err)
+		return rl.orig
+	}
 
 	uu := to.URL
 	uu.Fragment = rl.frag

@@ -263,13 +263,43 @@ func (pg *Page) IsExternal() bool {
 	return pg.URL.Scheme != "" || pg.URL.Opaque != "" || pg.URL.Host != ""
 }
 
+const maxRedirects = 25
+
+func (pg *Page) followRedirects() (*Page, error) {
+	curr := pg
+	curr.waitLoaded()
+
+	seen := make(map[*Page]struct{})
+	for curr.Redirect != nil {
+		if _, ok := seen[curr]; ok {
+			return nil, RedirectLoopError{
+				Start: pg.OrigURL.String(),
+				End:   curr.OrigURL.String(),
+			}
+		}
+
+		seen[curr] = struct{}{}
+		if len(seen) > maxRedirects {
+			return nil, TooManyRedirectsError{
+				Start: pg.OrigURL.String(),
+				End:   curr.OrigURL.String(),
+			}
+		}
+
+		curr = curr.Redirect
+		curr.waitLoaded()
+	}
+
+	return curr, nil
+}
+
 // FollowRedirects follows every redirect to the final Page
 func (pg *Page) FollowRedirects() *Page {
-	pg.waitLoaded()
-
+	// There's no need to do any checks here as in followRedirects(): it
+	// shouldn't be possible to access a page externally if there's an error
+	// during Crawl().
 	for pg.Redirect != nil {
 		pg = pg.Redirect
-		pg.waitLoaded()
 	}
 
 	return pg

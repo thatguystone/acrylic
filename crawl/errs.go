@@ -90,3 +90,25 @@ func (err FileDirMismatchError) Error() string {
 		"output path %q is used as both a file and a directory",
 		string(err))
 }
+
+type RedirectLoopError struct {
+	Start string
+	End   string
+}
+
+func (err RedirectLoopError) Error() string {
+	return fmt.Sprintf(
+		"redirect loop, started at %q, saw %q again",
+		err.Start, err.End)
+}
+
+type TooManyRedirectsError struct {
+	Start string
+	End   string
+}
+
+func (err TooManyRedirectsError) Error() string {
+	return fmt.Sprintf(
+		"too many redirects, started at %q, gave up at %q",
+		err.Start, err.End)
+}
