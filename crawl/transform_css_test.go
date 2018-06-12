@@ -1,65 +1,36 @@
 package crawl
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/thatguystone/cog/check"
 )
 
-func TestTransformCSSBasic(t *testing.T) {
+func TestTransformCSSRewrites(t *testing.T) {
 	c := check.New(t)
 
-	ns := newTestNS(c, nil)
-	defer ns.clean()
+	const css = `` +
+		`@import "/img.gif";` +
+		`.body1 { background: url(/img.gif); }` +
+		`.body2 { background: url("/img.gif"); }` +
+		`.body3 { background: url('/img.gif'); }`
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
-			"/all.css": stringHandler{
-				contType: cssType,
-				body: `@import "/r/";` +
-					`body { background: url(/r/); }`,
-			},
-			"/r/": http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					http.Redirect(w, r, "/f/", http.StatusFound)
-				}),
-			"/f/": stringHandler{
-				contType: htmlType,
-				body:     `redirected`,
-			},
-		}),
-		Entries: []string{"/all.css"},
-		Output:  ns.path("/public"),
+	lr := linkRewrite{
+		"/img.gif": "img.hash.gif",
 	}
 
-	_, err := Crawl(cfg)
-	c.Must.Nil(err)
-	ns.dumpTree()
-
-	all := ns.readFile("/public/all.css")
-	c.Contains(all, "/f/")
-	c.NotContains(all, "/r/")
+	out, err := transformCSS(lr, []byte(css))
+	c.Nil(err)
+	c.Contains(string(out), "img.hash.gif")
+	c.NotContains(string(out), "img.gif")
 }
 
 func TestTransformCSSError(t *testing.T) {
 	c := check.New(t)
 
-	ns := newTestNS(c, nil)
-	defer ns.clean()
+	const css = `body { derp`
+	lr := linkRewrite{}
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
-			"/all.css": stringHandler{
-				contType: cssType,
-				body:     `body { derp`,
-			},
-		}),
-		Entries: []string{"/all.css"},
-		Output:  ns.path("/public"),
-	}
-
-	_, err := Crawl(cfg)
-	c.Must.NotNil(err)
-	c.Contains(err, "/all.css")
+	_, err := transformCSS(lr, []byte(css))
+	c.NotNil(err)
 }

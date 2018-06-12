@@ -5,10 +5,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net/url"
 	"path"
 
 	"github.com/thatguystone/cog/cfs"
 )
+
+// FingerprintCb is called to determine if the given url/mediaType combo should
+// be fingerprinted before being written to disk.
+type FingerprintCb func(u *url.URL, mediaType string) bool
 
 func fingerprint(r io.Reader) (fp string, err error) {
 	sum, err := hashReader(r)

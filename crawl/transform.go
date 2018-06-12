@@ -10,15 +10,18 @@ import (
 )
 
 // Transform applies a single transform to the given content
-type Transform func(cr *Crawler, c *Content, b []byte) ([]byte, error)
+type Transform func(lr LinkResolver, b []byte) ([]byte, error)
 
-const (
-	jsType   = "application/javascript"
-	jsonType = "application/json"
-	svgType  = "image/svg+xml"
+var (
+	mini = minify.New()
+
+	defaultTransforms = map[string][]Transform{
+		htmlType: {transformHTML},
+		cssType:  {transformCSS},
+		jsonType: {transformJSON},
+		svgType:  {transformSVG},
+	}
 )
-
-var mini = minify.New()
 
 func init() {
 	mini.AddFunc(htmlType, html.Minify)
@@ -28,10 +31,10 @@ func init() {
 	mini.AddFunc(svgType, svg.Minify)
 }
 
-func transformJSON(cr *Crawler, c *Content, b []byte) ([]byte, error) {
+func transformJSON(lr LinkResolver, b []byte) ([]byte, error) {
 	return mini.Bytes(jsonType, b)
 }
 
-func transformSVG(cr *Crawler, c *Content, b []byte) ([]byte, error) {
+func transformSVG(lr LinkResolver, b []byte) ([]byte, error) {
 	return mini.Bytes(svgType, b)
 }

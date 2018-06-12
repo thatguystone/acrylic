@@ -1,44 +1,74 @@
 package crawl
 
 import (
+	"bytes"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/thatguystone/cog/check"
 )
 
-func TestCrawlInvalidURLs(t *testing.T) {
+func mux(m map[string]http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	for path, h := range m {
+		mux.Handle(path, h)
+	}
+
+	return mux
+}
+
+type stringHandler struct {
+	contType string
+	body     string
+}
+
+func (h stringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", h.contType)
+	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, h.body)
+}
+
+func TestCrawlClaimCollision(t *testing.T) {
 	c := check.New(t)
 
-	ns := newTestNS(c, nil)
-	defer ns.clean()
+	gifPrint, err := fingerprint(bytes.NewReader(gifBin))
+	c.Must.Nil(err)
+
+	fpPath := "/img." + gifPrint + ".gif"
 
 	tests := []struct {
-		name    string
-		errPath string
-		cfg     Config
+		paths []string
+		err   SiteError
 	}{
 		{
-			name:    "InvalidEntry",
-			errPath: "/",
-			cfg: Config{
-				Handler: http.HandlerFunc(http.NotFound),
-				Entries: []string{"://"},
-				Output:  ns.path("/public"),
+			paths: []string{
+				"/img.gif",
+				fpPath,
+			},
+			err: SiteError{
+				fpPath: {
+					FileAlreadyClaimedError{
+						File:  fpPath,
+						Owner: "/img.gif",
+					},
+				},
 			},
 		},
 		{
-			name:    "InvalidHref",
-			errPath: "/",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/": stringHandler{
-						contType: htmlType,
-						body:     `<a href="://"></a>`,
+			paths: []string{
+				fpPath,
+				"/img.gif",
+			},
+			err: SiteError{
+				"/img.gif": {
+					FileAlreadyClaimedError{
+						File:  fpPath,
+						Owner: fpPath,
 					},
-				}),
-				Entries: []string{"/"},
-				Output:  ns.path("/public"),
+				},
 			},
 		},
 	}
@@ -46,10 +76,125 @@ func TestCrawlInvalidURLs(t *testing.T) {
 	for _, test := range tests {
 		test := test
 
-		c.Run(test.name, func(c *check.C) {
-			_, err := Crawl(test.cfg)
-			c.Log(err)
-			c.Contains(err, test.errPath)
+		c.Run(test.paths[0], func(c *check.C) {
+			tmp := newTmpDir(c, nil)
+			defer tmp.remove()
+
+			cfg := Config{
+				Handler: mux(map[string]http.Handler{
+					"/img.gif": stringHandler{
+						contType: gifType,
+						body:     string(gifBin),
+					},
+					fpPath: stringHandler{
+						contType: gifType,
+						body:     string(gifBin),
+					},
+				}),
+				Output: tmp.path("/public"),
+				Fingerprint: func(u *url.URL, mediaType string) bool {
+					return strings.Contains(u.Path, "img.gif")
+				},
+			}
+
+			cr := newCrawler(cfg)
+
+			for _, path := range test.paths {
+				cr.get(&url.URL{Path: path})
+				cr.wg.Wait()
+			}
+
+			c.Equal(cr.err, test.err)
+		})
+	}
+}
+
+func TestCrawlClaimFileDirMismatch(t *testing.T) {
+	c := check.New(t)
+
+	tests := []struct {
+		paths []string
+		err   SiteError
+	}{
+		{
+			paths: []string{
+				"/index",
+				"/index/",
+			},
+			err: SiteError{
+				"/index/": {
+					FileDirMismatchError("/index"),
+				},
+			},
+		},
+		{
+			paths: []string{
+				"/index/",
+				"/index",
+			},
+			err: SiteError{
+				"/index": {
+					FileDirMismatchError("/index"),
+				},
+			},
+		},
+		{
+			paths: []string{
+				"/index",
+				"/index/nested/page/",
+			},
+			err: SiteError{
+				"/index/nested/page/": {
+					FileDirMismatchError("/index"),
+				},
+			},
+		},
+		{
+			paths: []string{
+				"/index/nested/page/",
+				"/index",
+			},
+			err: SiteError{
+				"/index": {
+					FileDirMismatchError("/index"),
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+
+		c.Run(test.paths[0], func(c *check.C) {
+			tmp := newTmpDir(c, nil)
+			defer tmp.remove()
+
+			cfg := Config{
+				Handler: mux(map[string]http.Handler{
+					"/index": stringHandler{
+						contType: DefaultType,
+						body:     `file`,
+					},
+					"/index/": stringHandler{
+						contType: htmlType,
+						body:     `dir`,
+					},
+					"/index/nested/page/": stringHandler{
+						contType: htmlType,
+						body:     `nested`,
+					},
+				}),
+				Output: tmp.path("/public"),
+			}
+
+			cr := newCrawler(cfg)
+
+			for _, path := range test.paths {
+				cr.get(&url.URL{Path: path})
+				cr.wg.Wait()
+			}
+
+			c.Equal(cr.err, test.err)
 		})
 	}
 }

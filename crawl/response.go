@@ -52,70 +52,78 @@ func Variant(w http.ResponseWriter, name string) {
 	w.Header().Set(variantHeader, name)
 }
 
-type body struct {
-	contType  string // Original Content-Type
-	mediaType string
-	buff      *bytes.Buffer
-	symSrc    string
+type response struct {
+	status int
+	header http.Header
+	body   responseBody
 }
 
-func newBody(resp *httptest.ResponseRecorder) (*body, error) {
-	b := body{
-		contType: resp.HeaderMap.Get("Content-Type"),
+func newResponse(rr *httptest.ResponseRecorder) (*response, error) {
+	resp := response{
+		status: rr.Code,
+		header: rr.HeaderMap,
 	}
 
-	if b.contType != pathContentType {
-		b.buff = resp.Body
+	contType := rr.HeaderMap.Get("Content-Type")
+
+	if contType != pathContentType {
+		resp.body.b = rr.Body.Bytes()
 	} else {
 		var cp crawlPath
-		err := json.NewDecoder(resp.Body).Decode(&cp)
+		err := json.NewDecoder(rr.Body).Decode(&cp)
 		if err != nil {
 			return nil, err
 		}
 
-		b.contType = cp.ContentType
-		b.symSrc = cp.Path
+		contType = cp.ContentType
+		resp.body.symSrc = cp.Path
 	}
 
-	if b.contType != "" {
-		mediaType, _, err := mime.ParseMediaType(b.contType)
+	if contType != "" {
+		mediaType, _, err := mime.ParseMediaType(contType)
 		if err != nil {
 			return nil, err
 		}
 
-		b.mediaType = mediaType
+		resp.body.mediaType = mediaType
 	}
 
-	return &b, nil
+	return &resp, nil
 }
 
-func (b *body) canSymlink() bool {
-	return b.symSrc != ""
+type responseBody struct {
+	mediaType string // Parsed Content-Type
+	symSrc    string // Path to original file
+	b         []byte // If symSrc == ""
 }
 
-func (b *body) setContent(s []byte) {
-	b.symSrc = ""
-	b.buff = bytes.NewBuffer(s)
+func (body *responseBody) canSymlink() bool {
+	return body.symSrc != ""
 }
 
-func (b *body) getContent() ([]byte, error) {
-	if b.canSymlink() {
-		f, err := os.Open(b.symSrc)
-		if err != nil {
-			return nil, err
-		}
+func (body *responseBody) set(b []byte) {
+	body.symSrc = ""
+	body.b = b
+}
 
-		defer f.Close()
-		return ioutil.ReadAll(f)
+func (body *responseBody) get() ([]byte, error) {
+	if !body.canSymlink() {
+		return body.b, nil
 	}
 
-	return b.buff.Bytes(), nil
-}
-
-func (b *body) getReader() (io.ReadCloser, error) {
-	if b.canSymlink() {
-		return os.Open(b.symSrc)
+	f, err := os.Open(body.symSrc)
+	if err != nil {
+		return nil, err
 	}
 
-	return ioutil.NopCloser(bytes.NewReader(b.buff.Bytes())), nil
+	defer f.Close()
+	return ioutil.ReadAll(f)
+}
+
+func (body *responseBody) reader() (io.ReadCloser, error) {
+	if !body.canSymlink() {
+		return ioutil.NopCloser(bytes.NewReader(body.b)), nil
+	}
+
+	return os.Open(body.symSrc)
 }

@@ -3,7 +3,6 @@ package crawl
 import (
 	"net/http"
 	"net/url"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -12,40 +11,72 @@ import (
 // Config configures what the Crawler does
 type Config struct {
 	Handler     http.Handler           // Handler to crawl
-	Entries     []string               // Entry points to crawl
+	Entries     []*url.URL             // Entry points to crawl
 	Output      string                 // Build directory
 	Transforms  map[string][]Transform // Transforms to apply, by Content-Type
-	Fingerprint func(*Content) bool    // Should *Content be fingerprinted?
+	Fingerprint FingerprintCb          // Fingerprint the page?
 	Links       LinkConfig             // What should be done with links?
 }
 
-type LinkConfig int
-
-const (
-	PreserveLinks LinkConfig = iota
-	AbsoluteLinks
-	RelativeLinks
-)
-
 // Crawl performs a crawl with the given config
-func Crawl(cfg Config) (cc CrawlContent, err error) {
+func Crawl(cfg Config) (Site, error) {
+	cr := newCrawler(cfg)
+
+	for _, entry := range cr.cfg.Entries {
+		cr.get(entry)
+	}
+
+	cr.wg.Wait()
+
+	if len(cr.err) > 0 {
+		return Site{}, cr.err
+	}
+
+	err := cr.cleanup()
+	if err != nil {
+		return Site{}, err
+	}
+
+	return cr.site, nil
+}
+
+type crawler struct {
+	cfg        Config
+	transforms map[string][]Transform
+	wg         sync.WaitGroup
+
+	mtx  sync.Mutex
+	err  SiteError
+	site Site
+	dirs map[string]struct{}
+	used map[string]struct{}
+}
+
+func newCrawler(cfg Config) *crawler {
 	if len(cfg.Entries) == 0 {
-		cfg.Entries = []string{"/"}
+		cfg.Entries = []*url.URL{
+			{Path: "/"},
+		}
+	}
+
+	if cfg.Output == "" {
+		cfg.Output = "./public"
 	}
 
 	if cfg.Fingerprint == nil {
-		cfg.Fingerprint = func(*Content) bool { return false }
+		cfg.Fingerprint = func(*url.URL, string) bool { return false }
 	}
 
-	cr := Crawler{
+	cr := crawler{
 		cfg:        cfg,
 		transforms: make(map[string][]Transform),
-		err:        make(Error),
-		cc: CrawlContent{
-			urls:  make(map[string]*Content),
-			pages: make(map[string]*Content),
-			files: make(map[string]*Content),
+		err:        make(SiteError),
+		site: Site{
+			urls:  make(map[string]*Page),
+			pages: make(map[string]*Page),
+			files: make(map[string]*Page),
 		},
+		dirs: make(map[string]struct{}),
 		used: make(map[string]struct{}),
 	}
 
@@ -55,116 +86,51 @@ func Crawl(cfg Config) (cc CrawlContent, err error) {
 
 	// Default transforms always come after user-supplied transforms so that
 	// the defaults may work on final, user-provided content.
-	cr.addTransforms(htmlType, transformHTML)
-	cr.addTransforms(cssType, transformCSS)
-	cr.addTransforms(jsonType, transformJSON)
-	cr.addTransforms(svgType, transformSVG)
-
-	for _, entry := range cr.cfg.Entries {
-		cr.Get(entry)
+	for contType, ts := range defaultTransforms {
+		cr.addTransforms(contType, ts...)
 	}
 
-	cr.wg.Wait()
-
-	err = cr.err.getError()
-	if err != nil {
-		return
-	}
-
-	err = cr.cleanup()
-	if err != nil {
-		return
-	}
-
-	cc = cr.cc
-	return
+	return &cr
 }
 
-// A Crawler is the high-level interface for dealing with content during a
-// Crawl()
-type Crawler struct {
-	cfg        Config
-	transforms map[string][]Transform
-	wg         sync.WaitGroup
-
-	mtx  sync.Mutex
-	err  Error
-	cc   CrawlContent
-	used map[string]struct{}
+func (cr *crawler) fingerprint(u url.URL, mediaType string) bool {
+	return cr.cfg.Fingerprint(&u, mediaType)
 }
 
-// Get gets Content by raw URL
-func (cr *Crawler) Get(rawURL string) *Content {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		panic(err)
-	}
-
-	return cr.GetURL(u)
+func (cr *crawler) addTransforms(contType string, ts ...Transform) {
+	cr.transforms[contType] = append(cr.transforms[contType], ts...)
 }
 
-// GetRel gets Content relative to the given Content
-func (cr *Crawler) GetRel(c *Content, rel string) *Content {
-	relU, err := c.URL.Parse(rel)
-	if err != nil {
-		panic(err)
-	}
-
-	return cr.GetURL(relU)
+func (cr *crawler) addError(u url.URL, err error) {
+	cr.mtx.Lock()
+	cr.err.add(u.String(), err)
+	cr.mtx.Unlock()
 }
 
-// GetURL gets Content by URL
-func (cr *Crawler) GetURL(u *url.URL) *Content {
-	uu := cr.cc.normURL(u)
+func (cr *crawler) get(u *url.URL) *Page {
+	uu := normURL(u)
 	k := uu.String()
 
 	cr.mtx.Lock()
 
-	c, ok := cr.cc.urls[k]
+	pg, ok := cr.site.urls[k]
 	if !ok {
-		c = newContent(cr, uu)
-		cr.cc.urls[k] = c
+		pg = newPage(cr, uu)
+		cr.site.urls[k] = pg
 	}
 
 	cr.mtx.Unlock()
 
-	return c
+	return pg
 }
 
-// ResolveLink gets an async LinkResolver for replacing links
-func (cr *Crawler) ResolveLink(c *Content, link string) LinkResolver {
-	relURL, err := url.Parse(link)
-	if err != nil {
-		panic(err)
-	}
-
-	return LinkResolver{
-		From:   c,
-		To:     cr.GetURL(c.URL.ResolveReference(relURL)),
-		relURL: relURL,
-	}
-}
-
-func (cr *Crawler) addTransforms(contType string, ts ...Transform) {
-	cr.transforms[contType] = append(cr.transforms[contType], ts...)
-}
-
-func (cr *Crawler) cleanup() error {
-	return nil
-}
-
-func (cr *Crawler) addError(path string, err error) {
-	cr.mtx.Lock()
-	cr.err.add(path, err)
-	cr.mtx.Unlock()
-}
-
-func (cr *Crawler) claimPage(c *Content, page string) (*Content, bool) {
+// Claim the given url.Path such that only 1 Page owns the path
+func (cr *crawler) claimPage(pg *Page, path string) (*Page, bool) {
 	cr.mtx.Lock()
 
-	claimer, ok := cr.cc.pages[page]
+	claimer, ok := cr.site.pages[path]
 	if !ok {
-		cr.cc.pages[page] = c
+		cr.site.pages[path] = pg
 	}
 
 	cr.mtx.Unlock()
@@ -172,110 +138,59 @@ func (cr *Crawler) claimPage(c *Content, page string) (*Content, bool) {
 	return claimer, !ok
 }
 
-func (cr *Crawler) setUsed(file string) {
-	abs, err := filepath.Abs(file)
-	if err != nil {
-		panic(err)
-	}
-
+// Mark the given file as used so that it doesn't get deleted
+func (cr *crawler) setUsed(file string) {
 	cr.mtx.Lock()
-	cr.used[abs] = struct{}{}
+	cr.used[file] = struct{}{}
 	cr.mtx.Unlock()
 }
 
-func (cr *Crawler) claimOutput(c *Content, file string) error {
-	abs, err := filepath.Abs(file)
-	if err != nil {
-		panic(err)
+// Claim the given output file and its parent directories
+func (cr *crawler) claimFile(pg *Page, file string) error {
+	dirs := make([]string, 0, strings.Count(file, "/"))
+	dir := file
+	for {
+		dir = filepath.Dir(dir)
+		if dir == "/" {
+			break
+		}
+
+		dirs = append(dirs, dir)
 	}
 
 	cr.mtx.Lock()
+	defer cr.mtx.Unlock()
 
-	using, inUse := cr.cc.files[abs]
-	if !inUse {
-		cr.cc.files[abs] = c
-		cr.used[abs] = struct{}{}
+	using, inUse := cr.site.files[file]
+	if inUse {
+		return FileAlreadyClaimedError{
+			File:  file,
+			Owner: using.OrigURL.String(),
+		}
 	}
 
-	cr.mtx.Unlock()
-
-	if inUse {
-		return AlreadyClaimedError{
-			Path: abs,
-			By:   using,
+	for _, dir := range dirs {
+		if _, ok := cr.site.files[dir]; ok {
+			return FileDirMismatchError(dir)
 		}
+	}
+
+	if _, ok := cr.dirs[file]; ok {
+		return FileDirMismatchError(file)
+	}
+
+	// Don't mark anything until after all checks so that either the claim
+	// succeeds entirely or not at all
+	cr.site.files[file] = pg
+	cr.used[file] = struct{}{}
+
+	for _, dir := range dirs {
+		cr.dirs[dir] = struct{}{}
 	}
 
 	return nil
 }
 
-// CrawlContent contains all content that the crawler found during its run.
-type CrawlContent struct {
-	urls  map[string]*Content // Content by full URL
-	pages map[string]*Content // Content by url.Path
-	files map[string]*Content // Content by absolute output path
-}
-
-func (cc *CrawlContent) normURL(u *url.URL) url.URL {
-	uu := *u
-
-	if uu.Path != "" {
-		uu.Path = path.Clean(uu.Path)
-
-		// path.Clean removes trailing slashes, but they matter here
-		if strings.HasSuffix(u.Path, "/") && !strings.HasSuffix(uu.Path, "/") {
-			uu.Path += "/"
-		}
-	}
-
-	// Sort query
-	uu.RawQuery = uu.Query().Encode()
-
-	// Has no meaning server-side
-	uu.Fragment = ""
-
-	return uu
-}
-
-// Get the Content at the given URL.
-func (cc *CrawlContent) Get(rawURL string) *Content {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		panic(err)
-	}
-
-	return cc.GetURL(u)
-}
-
-// Get the Content at the given URL.
-func (cc *CrawlContent) GetURL(u *url.URL) *Content {
-	uu := cc.normURL(u)
-	return cc.urls[uu.String()]
-}
-
-// GetPage gets the Content at the given url.Path.
-func (cc *CrawlContent) GetPage(page string) *Content {
-	return cc.pages[path.Clean(page)]
-}
-
-// GetFile gets the Content that corresponds to a file in the output directory.
-func (cc *CrawlContent) GetFile(path string) *Content {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		panic(err)
-	}
-
-	return cc.files[abs]
-}
-
-// A LinkResolver is a helper for link replacement
-type LinkResolver struct {
-	From   *Content
-	To     *Content
-	relURL *url.URL
-}
-
-// Get gets the final link
-func (r LinkResolver) Get() string {
-	return r.From.getLinkTo(r.To, r.relURL)
+func (cr *crawler) cleanup() error {
+	return nil
 }

@@ -7,6 +7,20 @@ import (
 	"github.com/thatguystone/cog/check"
 )
 
+func TestTransformSrcSetRewrites(t *testing.T) {
+	c := check.New(t)
+
+	const val = `/img.gif, /img.gif 2x, /img.gif 3x`
+
+	lr := linkRewrite{
+		"/img.gif": "img.hash.gif",
+	}
+
+	out := newSrcSetTransform(lr, val).get()
+	c.Contains(out, "img.hash.gif")
+	c.NotContains(out, "img.gif")
+}
+
 func TestParseSrcSet(t *testing.T) {
 	c := check.New(t)
 

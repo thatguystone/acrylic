@@ -7,9 +7,7 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-const htmlType = "text/html"
-
-func transformHTML(cr *Crawler, c *Content, b []byte) ([]byte, error) {
+func transformHTML(lr LinkResolver, b []byte) ([]byte, error) {
 	doc, err := html.Parse(bytes.NewReader(b))
 	if err != nil {
 		return nil, err
@@ -24,7 +22,7 @@ func transformHTML(cr *Crawler, c *Content, b []byte) ([]byte, error) {
 		}
 
 		if parent != nil && parent.DataAtom == atom.Style {
-			tf := newCSSTransform(cr, c, n.Data)
+			tf := newCSSTransform(lr, n.Data)
 			cbs = append(cbs, func() {
 				n.Data = string(tf.get())
 			})
@@ -39,19 +37,19 @@ func transformHTML(cr *Crawler, c *Content, b []byte) ([]byte, error) {
 
 			switch attr.Key {
 			case "src", "href":
-				linkResr := cr.ResolveLink(c, attr.Val)
+				res := lr.ResolveLink(attr.Val)
 				cbs = append(cbs, func() {
-					attr.Val = linkResr.Get()
+					attr.Val = res.Get()
 				})
 
 			case "srcset":
-				tf := newSrcSetTransform(cr, c, attr.Val)
+				tf := newSrcSetTransform(lr, attr.Val)
 				cbs = append(cbs, func() {
 					attr.Val = tf.get()
 				})
 
 			case "style":
-				tf := newCSSTransform(cr, c, attr.Val)
+				tf := newCSSTransform(lr, attr.Val)
 				cbs = append(cbs, func() {
 					attr.Val = string(tf.get())
 				})
