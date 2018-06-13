@@ -1,13 +1,5 @@
 package crawl
 
-type LinkConfig int
-
-const (
-	PreserveLinks LinkConfig = iota
-	AbsoluteLinks
-	RelativeLinks
-)
-
 // A LinkResolver resolves links asynchronously
 type LinkResolver interface {
 	ResolveLink(link string) ResolvedLinker
@@ -65,34 +57,3 @@ func (rl *resolvedLink) Get() string {
 	uu.Fragment = rl.frag
 	return uu.String()
 }
-
-// func getRelLinkTo() string {
-// 	const up = "../"
-
-// 	src := path.Clean(c.URL.Path)
-// 	dst := path.Clean(o.URL.Path)
-
-// 	start := 0
-// 	for i := 0; i < len(src) && i < len(dst); i++ {
-// 		if src[i] != dst[i] {
-// 			break
-// 		}
-
-// 		if src[i] == '/' {
-// 			start = i + 1
-// 		}
-// 	}
-
-// 	var b strings.Builder
-// 	dst = dst[start:]
-// 	dirs := strings.Count(src[start:], "/")
-
-// 	b.Grow((len(up) * dirs) + len(dst))
-// 	for i := 0; i < dirs; i++ {
-// 		b.WriteString(up)
-// 	}
-
-// 	b.WriteString(dst)
-
-// 	return b.String()
-// }

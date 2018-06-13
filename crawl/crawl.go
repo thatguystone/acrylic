@@ -16,7 +16,6 @@ type Config struct {
 	Transforms  map[string][]Transform // Transforms to apply, by media type
 	Fingerprint FingerprintCb          // Fingerprint the page?
 	CleanDirs   []string               // Any extra directories to clean
-	Links       LinkConfig             // What should be done with links?
 }
 
 // Crawl performs a crawl with the given config
