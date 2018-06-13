@@ -6,7 +6,7 @@ import (
 	"github.com/thatguystone/cog/check"
 )
 
-func TestCleanPath(t *testing.T) {
+func TestCleanURLPath(t *testing.T) {
 	c := check.New(t)
 
 	tests := []struct {
@@ -20,6 +20,6 @@ func TestCleanPath(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		c.Equal(cleanPath(test.in), test.out)
+		c.Equal(cleanURLPath(test.in), test.out)
 	}
 }

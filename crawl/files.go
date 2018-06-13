@@ -5,7 +5,33 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+func absPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		panic(err)
+	}
+
+	return abs
+}
+
+func parentDirs(file string) []string {
+	parents := make([]string, 0, strings.Count(file, "/"))
+
+	dir := file
+	for {
+		dir = filepath.Dir(dir)
+		if dir == "/" || dir == "." {
+			break
+		}
+
+		parents = append(parents, dir)
+	}
+
+	return parents
+}
 
 // fileEquals determines if the contents of the regular file at path is the same
 // as the given bytes.
@@ -52,8 +78,4 @@ func filePrepWrite(path string) error {
 	}
 
 	return os.MkdirAll(filepath.Dir(path), 0750)
-}
-
-func cleanTree() {
-
 }

@@ -73,16 +73,18 @@ func (err MimeTypeMismatchError) Error() string {
 // A FileAlreadyClaimedError indicates that a page cannot be written because
 // another page has already claimed its output path.
 type FileAlreadyClaimedError struct {
-	File  string // Path to claimed file
-	Owner string // What already claimed it
+	File     string // Path to claimed file
+	OwnerURL string // What already claimed it
 }
 
 func (err FileAlreadyClaimedError) Error() string {
 	return fmt.Sprintf(
-		"output path %q is already claimed by %q",
-		err.File, err.Owner)
+		"output file %q is already claimed by the page at URL %q",
+		err.File, err.OwnerURL)
 }
 
+// A FileDirMismatchError indicates that a path wants to be claimed as both a
+// file and a directory
 type FileDirMismatchError string
 
 func (err FileDirMismatchError) Error() string {
@@ -91,6 +93,7 @@ func (err FileDirMismatchError) Error() string {
 		string(err))
 }
 
+// A RedirectLoopError describes a loop in HTTP redirects
 type RedirectLoopError struct {
 	Start string
 	End   string
@@ -102,6 +105,8 @@ func (err RedirectLoopError) Error() string {
 		err.Start, err.End)
 }
 
+// A TooManyRedirectsError indicates that the crawler gave up trying to follow
+// redirects because there were too many
 type TooManyRedirectsError struct {
 	Start string
 	End   string

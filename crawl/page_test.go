@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/thatguystone/cog/check"
@@ -59,11 +61,11 @@ func TestPageFingerprint(t *testing.T) {
 		},
 	}
 
-	cont, err := Crawl(cfg)
+	site, err := Crawl(cfg)
 	c.Must.Nil(err)
 	tmp.dumpTree()
 
-	allCSS := cont.GetPage("/all.css")
+	allCSS := site.GetPage("/all.css")
 	c.NotLen(allCSS.Fingerprint, 0)
 	c.Contains(allCSS.URL.Path, allCSS.Fingerprint)
 
@@ -93,14 +95,14 @@ func TestPageAlias(t *testing.T) {
 		Output: tmp.path("/public"),
 	}
 
-	cont, err := Crawl(cfg)
+	site, err := Crawl(cfg)
 	c.Must.Nil(err)
 	tmp.dumpTree()
 
-	p1 := cont.Get(&url.URL{Path: "/page/", RawQuery: "p=1"})
+	p1 := site.Get(&url.URL{Path: "/page/", RawQuery: "p=1"})
 	c.Equal(p1.URL.RawQuery, "p=1")
 
-	p2 := cont.Get(&url.URL{Path: "/page/", RawQuery: "p=2"})
+	p2 := site.Get(&url.URL{Path: "/page/", RawQuery: "p=2"})
 	c.Equal(p2.URL.RawQuery, "p=2")
 
 	c.Equal(p1.URL.Path, p2.URL.Path)
@@ -243,15 +245,15 @@ func TestPageVariantBasic(t *testing.T) {
 		Output:  tmp.path("/public"),
 	}
 
-	cont, err := Crawl(cfg)
+	site, err := Crawl(cfg)
 	c.Must.Nil(err)
 	tmp.dumpTree()
 
 	c.Equal(
-		cont.Get(&url.URL{Path: "/people/", RawQuery: "who=bob"}).URL.Path,
+		site.Get(&url.URL{Path: "/people/", RawQuery: "who=bob"}).URL.Path,
 		"/people/bob.html")
 	c.Equal(
-		cont.Get(&url.URL{Path: "/people/", RawQuery: "who=alice"}).URL.Path,
+		site.Get(&url.URL{Path: "/people/", RawQuery: "who=alice"}).URL.Path,
 		"/people/alice.html")
 
 	index := tmp.readFile("/public/index.html")
@@ -276,15 +278,15 @@ func TestPageVariantFingerprint(t *testing.T) {
 		},
 	}
 
-	cont, err := Crawl(cfg)
+	site, err := Crawl(cfg)
 	c.Must.Nil(err)
 	tmp.dumpTree()
 
-	bob := cont.Get(&url.URL{Path: "/people/", RawQuery: "who=bob"})
+	bob := site.Get(&url.URL{Path: "/people/", RawQuery: "who=bob"})
 	c.NotContains(bob.URL.Path, "bob.html")
 	c.NotEqual(bob.Fingerprint, "")
 
-	alice := cont.Get(&url.URL{Path: "/people/", RawQuery: "who=alice"})
+	alice := site.Get(&url.URL{Path: "/people/", RawQuery: "who=alice"})
 	c.NotContains(alice.URL.Path, "alice.html")
 	c.NotEqual(alice.Fingerprint, "")
 
@@ -348,7 +350,7 @@ func TestPageURLFragments(t *testing.T) {
 	}
 }
 
-func TestPageRedirect(t *testing.T) {
+func TestPageRedirectBasic(t *testing.T) {
 	c := check.New(t)
 
 	tmp := newTmpDir(c, nil)
@@ -382,77 +384,6 @@ func TestPageRedirect(t *testing.T) {
 	c.Equal(
 		site.Get(&url.URL{Path: "/r/"}).FollowRedirects().URL.String(),
 		"/f/")
-}
-
-func TestPageRedirectLoopError(t *testing.T) {
-	c := check.New(t)
-
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
-
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
-			"/": stringHandler{
-				contType: htmlType,
-				body:     `<a href="/infinite/">inf</a>`,
-			},
-			"/infinite/": http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					http.Redirect(w, r, "/infinite/", http.StatusFound)
-				}),
-		}),
-		Output: tmp.path("/public"),
-	}
-
-	_, err := Crawl(cfg)
-	c.Equal(err, SiteError{
-		"/": {
-			RedirectLoopError{
-				Start: "/infinite/",
-				End:   "/infinite/",
-			},
-		},
-	})
-}
-
-func TestPageRedirectErrors(t *testing.T) {
-	c := check.New(t)
-
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
-
-	i := 0
-
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
-			"/": stringHandler{
-				contType: htmlType,
-				body:     `<a href="/deep/">deep</a>`,
-			},
-			"/deep/": http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					if i > maxRedirects {
-						w.Header().Set("Content-Type", DefaultType)
-						io.WriteString(w, "done")
-					} else {
-						i++
-						to := fmt.Sprintf("/deep/%d", i)
-						http.Redirect(w, r, to, http.StatusFound)
-					}
-				}),
-		}),
-		Output: tmp.path("/public"),
-	}
-
-	_, err := Crawl(cfg)
-	c.Equal(err, SiteError{
-		"/": {
-			TooManyRedirectsError{
-				Start: "/deep/",
-				End:   "/deep/25",
-			},
-		},
-	})
 }
 
 func TestPageBodyChanged(t *testing.T) {
@@ -688,6 +619,60 @@ func TestPageErrors(t *testing.T) {
 						Op:  "parse",
 						URL: "://",
 						Err: errors.New("missing protocol scheme"),
+					},
+				},
+			},
+		},
+		{
+			name: "RedirectLoop",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/": stringHandler{
+						contType: htmlType,
+						body:     `<a href="/infinite/">inf</a>`,
+					},
+					"/infinite/": http.HandlerFunc(
+						func(w http.ResponseWriter, r *http.Request) {
+							http.Redirect(w, r, "/infinite/", http.StatusFound)
+						}),
+				}),
+			},
+			err: SiteError{
+				"/": {
+					RedirectLoopError{
+						Start: "/infinite/",
+						End:   "/infinite/",
+					},
+				},
+			},
+		},
+		{
+			name: "TooManyRedirects",
+			cfg: Config{
+				Handler: mux(map[string]http.Handler{
+					"/": stringHandler{
+						contType: htmlType,
+						body:     `<a href="/deep/">deep</a>`,
+					},
+					"/deep/": http.HandlerFunc(
+						func(w http.ResponseWriter, r *http.Request) {
+							i, _ := strconv.Atoi(path.Base(r.URL.Path))
+
+							if i > maxRedirects {
+								w.Header().Set("Content-Type", DefaultType)
+								io.WriteString(w, "done")
+							} else {
+								to := fmt.Sprintf("/deep/%d", i+1)
+								http.Redirect(w, r, to, http.StatusFound)
+							}
+						}),
+				}),
+			},
+			err: SiteError{
+				"/": {
+					TooManyRedirectsError{
+						Start: "/deep/",
+						End:   "/deep/25",
 					},
 				},
 			},

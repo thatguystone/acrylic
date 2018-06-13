@@ -11,6 +11,38 @@ const (
 	filesTestSrc = "files_test.go"
 )
 
+func TestParentDirs(t *testing.T) {
+	c := check.New(t)
+
+	tests := []struct {
+		in  string
+		out []string
+	}{
+		{
+			in: "/some/long/path",
+			out: []string{
+				"/some/long",
+				"/some",
+			},
+		},
+		{
+			in: "some/long/path",
+			out: []string{
+				"some/long",
+				"some",
+			},
+		},
+		{
+			in:  ".",
+			out: []string{},
+		},
+	}
+
+	for _, test := range tests {
+		c.Equal(parentDirs(test.in), test.out)
+	}
+}
+
 func TestFileEquals(t *testing.T) {
 	c := check.New(t)
 

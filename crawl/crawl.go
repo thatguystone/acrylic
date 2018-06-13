@@ -3,8 +3,8 @@ package crawl
 import (
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 )
 
@@ -13,8 +13,9 @@ type Config struct {
 	Handler     http.Handler           // Handler to crawl
 	Entries     []*url.URL             // Entry points to crawl
 	Output      string                 // Build directory
-	Transforms  map[string][]Transform // Transforms to apply, by Content-Type
+	Transforms  map[string][]Transform // Transforms to apply, by media type
 	Fingerprint FingerprintCb          // Fingerprint the page?
+	CleanDirs   []string               // Any extra directories to clean
 	Links       LinkConfig             // What should be done with links?
 }
 
@@ -32,7 +33,7 @@ func Crawl(cfg Config) (Site, error) {
 		return Site{}, cr.err
 	}
 
-	err := cr.cleanup()
+	err := cr.clean()
 	if err != nil {
 		return Site{}, err
 	}
@@ -48,8 +49,7 @@ type crawler struct {
 	mtx  sync.Mutex
 	err  SiteError
 	site Site
-	dirs map[string]struct{}
-	used map[string]struct{}
+	used map[string]struct{} // Absolute paths to all used files and directories
 }
 
 func newCrawler(cfg Config) *crawler {
@@ -72,11 +72,10 @@ func newCrawler(cfg Config) *crawler {
 		transforms: make(map[string][]Transform),
 		err:        make(SiteError),
 		site: Site{
-			urls:  make(map[string]*Page),
-			pages: make(map[string]*Page),
-			files: make(map[string]*Page),
+			urls:   make(map[string]*Page),
+			pages:  make(map[string]*Page),
+			claims: make(map[string]*Page),
 		},
-		dirs: make(map[string]struct{}),
 		used: make(map[string]struct{}),
 	}
 
@@ -140,57 +139,97 @@ func (cr *crawler) claimPage(pg *Page, path string) (*Page, bool) {
 
 // Mark the given file as used so that it doesn't get deleted
 func (cr *crawler) setUsed(file string) {
+	file = absPath(file)
+	parents := parentDirs(file)
+
 	cr.mtx.Lock()
+
 	cr.used[file] = struct{}{}
+	for _, parent := range parents {
+		cr.used[parent] = struct{}{}
+	}
+
 	cr.mtx.Unlock()
 }
 
 // Claim the given output file and its parent directories
 func (cr *crawler) claimFile(pg *Page, file string) error {
-	dirs := make([]string, 0, strings.Count(file, "/"))
-	dir := file
-	for {
-		dir = filepath.Dir(dir)
-		if dir == "/" {
-			break
-		}
-
-		dirs = append(dirs, dir)
-	}
+	parents := parentDirs(file)
 
 	cr.mtx.Lock()
 	defer cr.mtx.Unlock()
 
-	using, inUse := cr.site.files[file]
-	if inUse {
-		return FileAlreadyClaimedError{
-			File:  file,
-			Owner: using.OrigURL.String(),
+	if claimer, ok := cr.site.claims[file]; ok {
+		if claimer != nil {
+			return FileAlreadyClaimedError{
+				File:     file,
+				OwnerURL: claimer.OrigURL.String(),
+			}
 		}
-	}
 
-	for _, dir := range dirs {
-		if _, ok := cr.site.files[dir]; ok {
-			return FileDirMismatchError(dir)
-		}
-	}
-
-	if _, ok := cr.dirs[file]; ok {
 		return FileDirMismatchError(file)
+	}
+
+	for _, parent := range parents {
+		if cr.site.claims[parent] != nil {
+			return FileDirMismatchError(parent)
+		}
 	}
 
 	// Don't mark anything until after all checks so that either the claim
 	// succeeds entirely or not at all
-	cr.site.files[file] = pg
 	cr.used[file] = struct{}{}
+	cr.site.claims[file] = pg
 
-	for _, dir := range dirs {
-		cr.dirs[dir] = struct{}{}
+	for _, parent := range parents {
+		cr.used[parent] = struct{}{}
+		cr.site.claims[parent] = nil
 	}
 
 	return nil
 }
 
-func (cr *crawler) cleanup() error {
+func (cr *crawler) clean() error {
+	dirs := []string{absPath(cr.cfg.Output)}
+	for _, dir := range cr.cfg.CleanDirs {
+		dirs = append(dirs, absPath(dir))
+	}
+
+	for _, dir := range dirs {
+		cr.setUsed(dir)
+	}
+
+	for _, dir := range dirs {
+		err := cr.cleanDir(dir)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func (cr *crawler) cleanDir(dir string) error {
+	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			// Don't fail if the root directory doesn't exist
+			if dir == path && os.IsNotExist(err) {
+				return nil
+			}
+
+			return err
+		}
+
+		if _, ok := cr.used[path]; ok {
+			return nil
+		}
+
+		err = os.RemoveAll(path)
+		if err != nil {
+			return err
+		}
+
+		// No need to continue: everything below this was removed
+		return filepath.SkipDir
+	})
 }

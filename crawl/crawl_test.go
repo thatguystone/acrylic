@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -31,6 +32,43 @@ func (h stringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, h.body)
 }
 
+func TestCrawlClean(t *testing.T) {
+	c := check.New(t)
+
+	tmp := newTmpDir(c, map[string]string{
+		"/public/dir/dir/file": ``,
+		"/public/dir/file":     ``,
+		"/public/file":         ``,
+		"/cache0/dir/dir/file": ``,
+		"/cache0/dir/file":     ``,
+		"/cache0/file":         ``,
+		"/cache0/nested/file":  ``,
+		"/cache1/file":         ``,
+	})
+	defer tmp.remove()
+
+	cfg := Config{
+		Output: tmp.path("/public"),
+		CleanDirs: []string{
+			tmp.path("/cache0"),
+			tmp.path("/cache0/nested"),
+			tmp.path("/cache1"),
+			tmp.path("/does-not-exist"),
+		},
+	}
+
+	cr := newCrawler(cfg)
+	cr.setUsed(tmp.path("/public/file"))
+	cr.setUsed(tmp.path("/cache0/file"))
+	err := cr.clean()
+	c.Nil(err)
+
+	c.Equal(tmp.getFiles(), map[string]string{
+		"/public/file": ``,
+		"/cache0/file": ``,
+	})
+}
+
 func TestCrawlClaimCollision(t *testing.T) {
 	c := check.New(t)
 
@@ -40,21 +78,23 @@ func TestCrawlClaimCollision(t *testing.T) {
 	fpPath := "/img." + gifPrint + ".gif"
 
 	tests := []struct {
-		paths []string
-		err   SiteError
+		paths  []string
+		getErr func(tmp *tmpDir) SiteError
 	}{
 		{
 			paths: []string{
 				"/img.gif",
 				fpPath,
 			},
-			err: SiteError{
-				fpPath: {
-					FileAlreadyClaimedError{
-						File:  fpPath,
-						Owner: "/img.gif",
+			getErr: func(tmp *tmpDir) SiteError {
+				return SiteError{
+					fpPath: {
+						FileAlreadyClaimedError{
+							File:     tmp.path(filepath.Join("public", fpPath)),
+							OwnerURL: "/img.gif",
+						},
 					},
-				},
+				}
 			},
 		},
 		{
@@ -62,13 +102,15 @@ func TestCrawlClaimCollision(t *testing.T) {
 				fpPath,
 				"/img.gif",
 			},
-			err: SiteError{
-				"/img.gif": {
-					FileAlreadyClaimedError{
-						File:  fpPath,
-						Owner: fpPath,
+			getErr: func(tmp *tmpDir) SiteError {
+				return SiteError{
+					"/img.gif": {
+						FileAlreadyClaimedError{
+							File:     tmp.path(filepath.Join("public", fpPath)),
+							OwnerURL: fpPath,
+						},
 					},
-				},
+				}
 			},
 		},
 	}
@@ -104,8 +146,10 @@ func TestCrawlClaimCollision(t *testing.T) {
 				cr.wg.Wait()
 			}
 
-			c.Equal(cr.err, test.err)
-			c.Equal(cr.err.Error(), test.err.Error())
+			err := test.getErr(tmp)
+
+			c.Equal(cr.err, err)
+			c.Equal(cr.err.Error(), err.Error())
 		})
 	}
 }
@@ -114,18 +158,21 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 	c := check.New(t)
 
 	tests := []struct {
-		paths []string
-		err   SiteError
+		paths  []string
+		getErr func(tmp *tmpDir) SiteError
 	}{
 		{
 			paths: []string{
 				"/index",
 				"/index/",
 			},
-			err: SiteError{
-				"/index/": {
-					FileDirMismatchError("/index"),
-				},
+			getErr: func(tmp *tmpDir) SiteError {
+				path := tmp.path(filepath.Join("public", "index"))
+				return SiteError{
+					"/index/": {
+						FileDirMismatchError(path),
+					},
+				}
 			},
 		},
 		{
@@ -133,10 +180,13 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index/",
 				"/index",
 			},
-			err: SiteError{
-				"/index": {
-					FileDirMismatchError("/index"),
-				},
+			getErr: func(tmp *tmpDir) SiteError {
+				path := tmp.path(filepath.Join("public", "index"))
+				return SiteError{
+					"/index": {
+						FileDirMismatchError(path),
+					},
+				}
 			},
 		},
 		{
@@ -144,10 +194,13 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index",
 				"/index/nested/page/",
 			},
-			err: SiteError{
-				"/index/nested/page/": {
-					FileDirMismatchError("/index"),
-				},
+			getErr: func(tmp *tmpDir) SiteError {
+				path := tmp.path(filepath.Join("public", "index"))
+				return SiteError{
+					"/index/nested/page/": {
+						FileDirMismatchError(path),
+					},
+				}
 			},
 		},
 		{
@@ -155,10 +208,13 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index/nested/page/",
 				"/index",
 			},
-			err: SiteError{
-				"/index": {
-					FileDirMismatchError("/index"),
-				},
+			getErr: func(tmp *tmpDir) SiteError {
+				path := tmp.path(filepath.Join("public", "index"))
+				return SiteError{
+					"/index": {
+						FileDirMismatchError(path),
+					},
+				}
 			},
 		},
 	}
@@ -195,8 +251,10 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				cr.wg.Wait()
 			}
 
-			c.Equal(cr.err, test.err)
-			c.Equal(cr.err.Error(), test.err.Error())
+			err := test.getErr(tmp)
+
+			c.Equal(cr.err, err)
+			c.Equal(cr.err.Error(), err.Error())
 		})
 	}
 }

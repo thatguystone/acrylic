@@ -16,7 +16,7 @@ type Page struct {
 	OrigURL     url.URL // URL without any changes
 	URL         url.URL // Final URL
 	Redirect    *Page   // Where this page redirected to
-	OutputPath  string  // Output path, relative to Config.Output
+	OutputPath  string  // Absolute path of output file
 	Fingerprint string  // Hash of content after all transforms
 	cr          *crawler
 	pending     bool           // If load is in-progress
@@ -166,34 +166,32 @@ func (pg *Page) render(resp *response) error {
 		return err
 	}
 
-	dst := filepath.Join(pg.cr.cfg.Output, pg.OutputPath)
-
 	if resp.body.canSymlink() {
 		// Need to mark the src as used so that it doesn't get cleaned up,
 		// leaving a broken symlink.
 		pg.cr.setUsed(resp.body.symSrc)
 
-		err := filePrepWrite(dst)
+		err := filePrepWrite(pg.OutputPath)
 		if err != nil {
 			return err
 		}
 
-		return os.Symlink(resp.body.symSrc, dst)
+		return os.Symlink(resp.body.symSrc, pg.OutputPath)
 	}
 
 	// If the file hasn't changed, don't write anything: this is mainly for
 	// rsync.
-	equal, err := fileEquals(dst, resp.body.b)
+	equal, err := fileEquals(pg.OutputPath, resp.body.b)
 	if err != nil || equal {
 		return err
 	}
 
-	err = filePrepWrite(dst)
+	err = filePrepWrite(pg.OutputPath)
 	if err != nil {
 		return err
 	}
 
-	return ioutil.WriteFile(dst, resp.body.b, 0640)
+	return ioutil.WriteFile(pg.OutputPath, resp.body.b, 0640)
 }
 
 func (pg *Page) setAliasOf(o *Page) {
@@ -218,7 +216,7 @@ func (pg *Page) setOutputPath() {
 		pg.URL.Path = outPath
 	}
 
-	pg.OutputPath = filepath.Clean(outPath)
+	pg.OutputPath = absPath(filepath.Join(pg.cr.cfg.Output, outPath))
 	pg.setLoaded()
 }
 

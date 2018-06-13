@@ -75,6 +75,19 @@ func (tmp *tmpDir) dumpTree() {
 	})
 }
 
+func (tmp *tmpDir) getFiles() map[string]string {
+	m := make(map[string]string)
+
+	tmp.walk("/", func(rel, abs string) {
+		b, err := ioutil.ReadFile(abs)
+		tmp.c.Must.Nil(err)
+
+		m[rel] = string(b)
+	})
+
+	return m
+}
+
 func (tmp *tmpDir) readFile(path string) string {
 	b, err := ioutil.ReadFile(tmp.path(path))
 	tmp.c.Must.Nil(err)
