@@ -424,17 +424,20 @@ func TestPageErrors(t *testing.T) {
 		{
 			name: "TransformError",
 			h: mux(map[string]http.Handler{
-				"/all.css": stringHandler{
-					contType: cssType,
-					body:     `body { invalid`,
+				"/": stringHandler{
+					contType: htmlType,
 				},
 			}),
 			opts: []Option{
-				Entry(&url.URL{Path: "/all.css"}),
+				Transforms(map[string][]Transform{
+					htmlType: {func(lr LinkResolver, b []byte) ([]byte, error) {
+						return nil, errors.New("transform failed")
+					}},
+				}),
 			},
 			err: SiteError{
-				"/all.css": {
-					errors.New("unexpected token in declaration, expected colon token"),
+				"/": {
+					errors.New("transform failed"),
 				},
 			},
 		},

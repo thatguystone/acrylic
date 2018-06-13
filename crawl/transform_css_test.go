@@ -28,7 +28,7 @@ func TestTransformCSSRewrites(t *testing.T) {
 func TestTransformCSSError(t *testing.T) {
 	c := check.New(t)
 
-	const css = `body { derp`
+	const css = `}`
 	lr := linkRewrite{}
 
 	_, err := transformCSS(lr, []byte(css))
