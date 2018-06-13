@@ -22,17 +22,14 @@ func TestPageAddIndexSanity(t *testing.T) {
 	tmp := internal.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
+	_, err := Crawl(
+		mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
 				body:     `index`,
 			},
 		}),
-		Output: tmp.Path("/public"),
-	}
-
-	_, err := Crawl(cfg)
+		Output(tmp.Path("/public")))
 	c.Nil(err)
 	tmp.DumpTree()
 
@@ -45,8 +42,8 @@ func TestPageFingerprint(t *testing.T) {
 	tmp := internal.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
+	site, err := Crawl(
+		mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
 				body:     `<link href="all.css" rel="stylesheet">`,
@@ -56,13 +53,10 @@ func TestPageFingerprint(t *testing.T) {
 				body:     `body { background: #000; }`,
 			},
 		}),
-		Output: tmp.Path("/public"),
-		Fingerprint: func(u *url.URL, mediaType string) bool {
+		Output(tmp.Path("/public")),
+		Fingerprint(func(u *url.URL, mediaType string) bool {
 			return filepath.Ext(u.Path) == ".css"
-		},
-	}
-
-	site, err := Crawl(cfg)
+		}))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -80,8 +74,8 @@ func TestPageAlias(t *testing.T) {
 	tmp := internal.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
+	site, err := Crawl(
+		mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
 				body: `` +
@@ -93,10 +87,7 @@ func TestPageAlias(t *testing.T) {
 				body:     `page`,
 			},
 		}),
-		Output: tmp.Path("/public"),
-	}
-
-	site, err := Crawl(cfg)
+		Output(tmp.Path("/public")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -121,8 +112,8 @@ func TestPageOverwriteExistingOutputs(t *testing.T) {
 	})
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
+	_, err := Crawl(
+		mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
 				body: `` +
@@ -138,11 +129,9 @@ func TestPageOverwriteExistingOutputs(t *testing.T) {
 				body:     string(internal.GifBin),
 			},
 		}),
-		Output: tmp.Path("/public"),
-	}
-
-	_, err := Crawl(cfg)
+		Output(tmp.Path("/public")))
 	c.Nil(err)
+	tmp.DumpTree()
 
 	c.Equal(tmp.ReadFile("/public/about.html"), `about`)
 	c.Equal(tmp.ReadFile("/public/img.gif"), string(internal.GifBin))
@@ -161,8 +150,8 @@ func TestPageServeFileSymlinks(t *testing.T) {
 	})
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
+	_, err := Crawl(
+		mux(map[string]http.Handler{
 			"/stuff": http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
 					ServeFile(w, r, tmp.Path("/stuff"))
@@ -176,15 +165,11 @@ func TestPageServeFileSymlinks(t *testing.T) {
 					ServeFile(w, r, tmp.Path("/stuff.css"))
 				}),
 		}),
-		Entries: []*url.URL{
-			{Path: "/stuff"},
-			{Path: "/stuff.txt"},
-			{Path: "/stuff.css"},
-		},
-		Output: tmp.Path("/public"),
-	}
-
-	_, err := Crawl(cfg)
+		Entry(
+			&url.URL{Path: "/stuff"},
+			&url.URL{Path: "/stuff.txt"},
+			&url.URL{Path: "/stuff.css"}),
+		Output(tmp.Path("/public")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -241,12 +226,7 @@ func TestPageVariantBasic(t *testing.T) {
 	tmp := internal.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: variantHandler,
-		Output:  tmp.Path("/public"),
-	}
-
-	site, err := Crawl(cfg)
+	site, err := Crawl(variantHandler, Output(tmp.Path("/public")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -271,15 +251,12 @@ func TestPageVariantFingerprint(t *testing.T) {
 	tmp := internal.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: variantHandler,
-		Output:  tmp.Path("/public"),
-		Fingerprint: func(u *url.URL, mediaType string) bool {
+	site, err := Crawl(
+		variantHandler,
+		Output(tmp.Path("/public")),
+		Fingerprint(func(u *url.URL, mediaType string) bool {
 			return u.Path != "/"
-		},
-	}
-
-	site, err := Crawl(cfg)
+		}))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -323,8 +300,8 @@ func TestPageURLFragments(t *testing.T) {
 		body += fmt.Sprintf(`<a href="%s"></a>`, link)
 	}
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
+	_, err := Crawl(
+		mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
 				body:     body,
@@ -338,10 +315,7 @@ func TestPageURLFragments(t *testing.T) {
 				body:     `<div id="frag"></div>`,
 			},
 		}),
-		Output: tmp.Path("/public"),
-	}
-
-	_, err := Crawl(cfg)
+		Output(tmp.Path("/public")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -357,8 +331,8 @@ func TestPageRedirectBasic(t *testing.T) {
 	tmp := internal.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
+	site, err := Crawl(
+		mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
 				body:     `<a href="/r/">link</a>`,
@@ -372,11 +346,9 @@ func TestPageRedirectBasic(t *testing.T) {
 				body:     `file`,
 			},
 		}),
-		Output: tmp.Path("/public"),
-	}
-
-	site, err := Crawl(cfg)
+		Output(tmp.Path("/public")))
 	c.Nil(err)
+	tmp.DumpTree()
 
 	index := tmp.ReadFile("/public/index.html")
 	c.Contains(index, "/f/")
@@ -397,8 +369,8 @@ func TestPageBodyChanged(t *testing.T) {
 	})
 	defer tmp.Remove()
 
-	cfg := Config{
-		Handler: mux(map[string]http.Handler{
+	_, err := Crawl(
+		mux(map[string]http.Handler{
 			"/": stringHandler{
 				contType: htmlType,
 				body:     "index",
@@ -412,15 +384,11 @@ func TestPageBodyChanged(t *testing.T) {
 				body:     "page 2",
 			},
 		}),
-		Entries: []*url.URL{
+		Entry(
 			&url.URL{Path: "/"},
 			&url.URL{Path: "/page/1/"},
-			&url.URL{Path: "/page/2/"},
-		},
-		Output: tmp.Path("/public"),
-	}
-
-	_, err := Crawl(cfg)
+			&url.URL{Path: "/page/2/"}),
+		Output(tmp.Path("/public")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -437,14 +405,13 @@ func TestPageErrors(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cfg  Config
+		h    http.Handler
+		opts []Option
 		err  SiteError
 	}{
 		{
 			name: "Basic404",
-			cfg: Config{
-				Handler: http.HandlerFunc(http.NotFound),
-			},
+			h:    http.HandlerFunc(http.NotFound),
 			err: SiteError{
 				"/": {
 					ResponseError{
@@ -456,16 +423,14 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "TransformError",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/all.css": stringHandler{
-						contType: cssType,
-						body:     `body { invalid`,
-					},
-				}),
-				Entries: []*url.URL{
-					&url.URL{Path: "/all.css"},
+			h: mux(map[string]http.Handler{
+				"/all.css": stringHandler{
+					contType: cssType,
+					body:     `body { invalid`,
 				},
+			}),
+			opts: []Option{
+				Entry(&url.URL{Path: "/all.css"}),
 			},
 			err: SiteError{
 				"/all.css": {
@@ -475,28 +440,24 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "InvalidContentType",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/": stringHandler{
-						contType: "invalid; ======",
-					},
-				}),
-			},
+			h: mux(map[string]http.Handler{
+				"/": stringHandler{
+					contType: "invalid; ======",
+				},
+			}),
 			err: SiteError{
 				"/": {errors.New("mime: invalid media parameter")},
 			},
 		},
 		{
 			name: "ContentTypeMismatch",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/page.html": stringHandler{
-						contType: internal.GifType,
-					},
-				}),
-				Entries: []*url.URL{
-					&url.URL{Path: "/page.html"},
+			h: mux(map[string]http.Handler{
+				"/page.html": stringHandler{
+					contType: internal.GifType,
 				},
+			}),
+			opts: []Option{
+				Entry(&url.URL{Path: "/page.html"}),
 			},
 			err: SiteError{
 				"/page.html": {
@@ -510,15 +471,13 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "UnknownContentTypeExtension",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/page.not-an-ext": stringHandler{
-						contType: internal.GifType,
-					},
-				}),
-				Entries: []*url.URL{
-					&url.URL{Path: "/page.not-an-ext"},
+			h: mux(map[string]http.Handler{
+				"/page.not-an-ext": stringHandler{
+					contType: internal.GifType,
 				},
+			}),
+			opts: []Option{
+				Entry(&url.URL{Path: "/page.not-an-ext"}),
 			},
 			err: SiteError{
 				"/page.not-an-ext": {
@@ -532,16 +491,14 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "TransformNonExistentServeFile",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/all.css": http.HandlerFunc(
-						func(w http.ResponseWriter, r *http.Request) {
-							ServeFile(w, r, "/doesnt-exist.css")
-						}),
-				}),
-				Entries: []*url.URL{
-					&url.URL{Path: "/all.css"},
-				},
+			h: mux(map[string]http.Handler{
+				"/all.css": http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						ServeFile(w, r, "/doesnt-exist.css")
+					}),
+			}),
+			opts: []Option{
+				Entry(&url.URL{Path: "/all.css"}),
 			},
 			err: SiteError{
 				"/all.css": {cssOpenErr},
@@ -549,19 +506,17 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "FingerprintNonExistent",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/img.gif": http.HandlerFunc(
-						func(w http.ResponseWriter, r *http.Request) {
-							ServeFile(w, r, "/doesnt-exist.gif")
-						}),
-				}),
-				Entries: []*url.URL{
-					&url.URL{Path: "/img.gif"},
-				},
-				Fingerprint: func(u *url.URL, mediaType string) bool {
+			h: mux(map[string]http.Handler{
+				"/img.gif": http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						ServeFile(w, r, "/doesnt-exist.gif")
+					}),
+			}),
+			opts: []Option{
+				Entry(&url.URL{Path: "/img.gif"}),
+				Fingerprint(func(u *url.URL, mediaType string) bool {
 					return true
-				},
+				}),
 			},
 			err: SiteError{
 				"/img.gif": {gifOpenErr},
@@ -569,14 +524,12 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "InvalidHref",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/": stringHandler{
-						contType: htmlType,
-						body:     `<a href="://"></a>`,
-					},
-				}),
-			},
+			h: mux(map[string]http.Handler{
+				"/": stringHandler{
+					contType: htmlType,
+					body:     `<a href="://"></a>`,
+				},
+			}),
 			err: SiteError{
 				"/": {
 					&url.Error{
@@ -589,12 +542,10 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "InvalidVariantURL",
-			cfg: Config{
-				Handler: http.HandlerFunc(
-					func(w http.ResponseWriter, r *http.Request) {
-						Variant(w, "://")
-					}),
-			},
+			h: http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					Variant(w, "://")
+				}),
 			err: SiteError{
 				"/": {
 					&url.Error{
@@ -607,13 +558,11 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "InvalidRedirectURL",
-			cfg: Config{
-				Handler: http.HandlerFunc(
-					func(w http.ResponseWriter, r *http.Request) {
-						w.Header().Set("Location", "://")
-						w.WriteHeader(http.StatusFound)
-					}),
-			},
+			h: http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Location", "://")
+					w.WriteHeader(http.StatusFound)
+				}),
 			err: SiteError{
 				"/": {
 					&url.Error{
@@ -626,18 +575,16 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "RedirectLoop",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/": stringHandler{
-						contType: htmlType,
-						body:     `<a href="/infinite/">inf</a>`,
-					},
-					"/infinite/": http.HandlerFunc(
-						func(w http.ResponseWriter, r *http.Request) {
-							http.Redirect(w, r, "/infinite/", http.StatusFound)
-						}),
-				}),
-			},
+			h: mux(map[string]http.Handler{
+				"/": stringHandler{
+					contType: htmlType,
+					body:     `<a href="/infinite/">inf</a>`,
+				},
+				"/infinite/": http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						http.Redirect(w, r, "/infinite/", http.StatusFound)
+					}),
+			}),
 			err: SiteError{
 				"/": {
 					RedirectLoopError{
@@ -649,26 +596,24 @@ func TestPageErrors(t *testing.T) {
 		},
 		{
 			name: "TooManyRedirects",
-			cfg: Config{
-				Handler: mux(map[string]http.Handler{
-					"/": stringHandler{
-						contType: htmlType,
-						body:     `<a href="/deep/">deep</a>`,
-					},
-					"/deep/": http.HandlerFunc(
-						func(w http.ResponseWriter, r *http.Request) {
-							i, _ := strconv.Atoi(path.Base(r.URL.Path))
+			h: mux(map[string]http.Handler{
+				"/": stringHandler{
+					contType: htmlType,
+					body:     `<a href="/deep/">deep</a>`,
+				},
+				"/deep/": http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						i, _ := strconv.Atoi(path.Base(r.URL.Path))
 
-							if i > maxRedirects {
-								w.Header().Set("Content-Type", DefaultType)
-								io.WriteString(w, "done")
-							} else {
-								to := fmt.Sprintf("/deep/%d", i+1)
-								http.Redirect(w, r, to, http.StatusFound)
-							}
-						}),
-				}),
-			},
+						if i > maxRedirects {
+							w.Header().Set("Content-Type", DefaultType)
+							io.WriteString(w, "done")
+						} else {
+							to := fmt.Sprintf("/deep/%d", i+1)
+							http.Redirect(w, r, to, http.StatusFound)
+						}
+					}),
+			}),
 			err: SiteError{
 				"/": {
 					TooManyRedirectsError{
@@ -687,9 +632,11 @@ func TestPageErrors(t *testing.T) {
 			tmp := internal.NewTmpDir(c, nil)
 			defer tmp.Remove()
 
-			test.cfg.Output = tmp.Path("/public")
+			var opts []Option
+			opts = append(opts, test.opts...)
+			opts = append(opts, Output(tmp.Path("/public")))
 
-			_, err := Crawl(test.cfg)
+			_, err := Crawl(test.h, opts...)
 			c.Equal(err, test.err)
 			if err != nil {
 				c.Equal(err.Error(), test.err.Error())

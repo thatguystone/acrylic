@@ -77,7 +77,7 @@ func (pg *Page) load() {
 
 	rr := httptest.NewRecorder()
 
-	pg.cr.cfg.Handler.ServeHTTP(rr, req)
+	pg.cr.handler.ServeHTTP(rr, req)
 
 	err := pg.handleResp(rr)
 	if err != nil {
@@ -133,7 +133,7 @@ func (pg *Page) render(resp *response) error {
 		return nil
 	}
 
-	needsFingerprint := pg.cr.fingerprint(pg.URL, resp.body.mediaType)
+	needsFingerprint := pg.cr.shouldFingerprint(pg.URL, resp.body.mediaType)
 	if !needsFingerprint {
 		pg.setOutputPath()
 	}
@@ -216,7 +216,7 @@ func (pg *Page) setOutputPath() {
 		pg.URL.Path = outPath
 	}
 
-	pg.OutputPath = absPath(filepath.Join(pg.cr.cfg.Output, outPath))
+	pg.OutputPath = absPath(filepath.Join(pg.cr.output, outPath))
 	pg.setLoaded()
 }
 

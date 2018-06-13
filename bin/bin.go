@@ -1,4 +1,5 @@
-package acrylic
+// Package bin implements a binary runner, compiler, reloader, and proxy
+package bin
 
 //gocovr:skip-file
 
@@ -13,39 +14,48 @@ import (
 	"time"
 
 	"github.com/thatguystone/acrylic/crawl"
+	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/proxy"
+	"github.com/thatguystone/acrylic/watch"
 	"github.com/thatguystone/cog/stringc"
 )
 
-// A Bin builds a binary and proxies all traffic to it
-type BinConfig struct {
-	BuildCmd []string // Command to build
-	RunCmd   []string // Command to run
-	ProxyTo  string   // Address to proxy requests to
-	Exts     []string // Extensions to use to check for changes
-}
-
 type bin struct {
-	cfg     BinConfig
-	changed chan struct{}
+	buildCmd []string
+	runCmd   []string
+	exts     []string
+	logf     func(string, ...interface{})
+	changed  chan struct{}
 
 	rwmtx  sync.RWMutex
 	cmd    *exec.Cmd
 	err    error
 	cmdErr chan error
-	proxy  *Proxy
+	proxy  *proxy.Proxy
 }
 
-func NewBin(cfg BinConfig) HandlerWatcher {
-	proxy, err := NewProxy(cfg.ProxyTo)
+// New creates a new binary runner/builder/proxy
+func New(proxyTarget string, runCmd []string, opts ...Option) http.Handler {
+	b := &bin{
+		runCmd:  runCmd,
+		logf:    log.Printf,
+		changed: make(chan struct{}, 1),
+		cmdErr:  make(chan error),
+	}
+
+	for _, opt := range opts {
+		opt.applyTo(b)
+	}
+
+	proxy, err := proxy.New(proxyTarget,
+		proxy.ErrorLog(func(s ...interface{}) {
+			b.logf("%s", fmt.Sprint(s...))
+		}))
 	if err != nil {
 		panic(err)
 	}
 
-	b := bin{
-		cfg:     cfg,
-		changed: make(chan struct{}, 1),
-		proxy:   proxy,
-	}
+	b.proxy = proxy
 
 	// Lock, pending first build
 	b.rwmtx.Lock()
@@ -53,17 +63,17 @@ func NewBin(cfg BinConfig) HandlerWatcher {
 
 	b.changed <- struct{}{}
 
-	return &b
+	return b
 }
 
-func (b *bin) Changed(evs WatchEvents) {
+func (b *bin) Changed(evs watch.Events) {
 	if b.shouldRebuild(evs) {
 		b.changed <- struct{}{}
 	}
 }
 
-func (b *bin) shouldRebuild(evs WatchEvents) bool {
-	for _, ext := range b.cfg.Exts {
+func (b *bin) shouldRebuild(evs watch.Events) bool {
+	for _, ext := range b.exts {
 		if evs.HasExt(ext) {
 			return true
 		}
@@ -87,17 +97,17 @@ func (b *bin) run() {
 			first = false
 
 			start := time.Now()
-			log.Printf("I: bin %s: rebuilding...\n", b.cfg.RunCmd[0])
+			b.logf("I: bin %s: rebuilding...\n", b.runCmd[0])
 			b.err = b.rebuild()
 
 			b.rwmtx.Unlock()
 
 			if b.err == nil {
-				log.Printf("I: bin %s: rebuild took %s\n",
-					b.cfg.RunCmd[0], time.Since(start))
+				b.logf("I: bin %s: rebuild took %s\n",
+					b.runCmd[0], time.Since(start))
 			} else {
-				log.Printf("E: bin %s: rebuild failed:\n%v",
-					b.cfg.RunCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
+				b.logf("E: bin %s: rebuild failed:\n%v",
+					b.runCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
 			}
 
 		case err := <-b.cmdErr:
@@ -105,8 +115,8 @@ func (b *bin) run() {
 			b.err = err
 			b.rwmtx.Unlock()
 
-			log.Printf("E: bin %s: exited:\n%v",
-				b.cfg.RunCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
+			b.logf("E: bin %s: exited:\n%v",
+				b.runCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
 		}
 	}
 }
@@ -134,15 +144,15 @@ func (b *bin) term() {
 }
 
 func (b *bin) rebuild() error {
-	if len(b.cfg.BuildCmd) > 0 {
-		cmd := exec.Command(b.cfg.BuildCmd[0], b.cfg.BuildCmd[1:]...)
+	if len(b.buildCmd) > 0 {
+		cmd := exec.Command(b.buildCmd[0], b.buildCmd[1:]...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return errors.New(string(out))
 		}
 	}
 
-	b.cmd = exec.Command(b.cfg.RunCmd[0], b.cfg.RunCmd[1:]...)
+	b.cmd = exec.Command(b.runCmd[0], b.runCmd[1:]...)
 	b.cmd.Stdout = os.Stdout
 	b.cmd.Stderr = os.Stderr
 	go func() {
@@ -170,7 +180,7 @@ func (b *bin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer b.rwmtx.RUnlock()
 
 	if b.err != nil {
-		HTTPError(w, b.err.Error(), http.StatusInternalServerError)
+		internal.HTTPError(w, b.err.Error(), http.StatusInternalServerError)
 	} else {
 		b.proxy.ServeHTTP(w, r)
 	}

@@ -1,4 +1,5 @@
-package acrylic
+// Package proxy implements a reverse proxy
+package proxy
 
 import (
 	"fmt"
@@ -14,8 +15,8 @@ type Proxy struct {
 	url *url.URL
 }
 
-// NewProxy creates a new Proxy wrapper
-func NewProxy(target string) (*Proxy, error) {
+// New creates a new Proxy wrapper
+func New(target string, opts ...Option) (*Proxy, error) {
 	url, err := url.Parse(target)
 	if err != nil {
 		return nil, fmt.Errorf("proxy: failed to parse %q: %v", url, err)
@@ -24,6 +25,10 @@ func NewProxy(target string) (*Proxy, error) {
 	p := &Proxy{
 		url:          url,
 		ReverseProxy: httputil.NewSingleHostReverseProxy(url),
+	}
+
+	for _, opt := range opts {
+		opt.applyTo(p)
 	}
 
 	return p, nil

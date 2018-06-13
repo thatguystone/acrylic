@@ -1,15 +1,10 @@
-package acrylic
+package internal
 
 import (
 	"fmt"
 	"html"
 	"net/http"
 )
-
-type HandlerWatcher interface {
-	http.Handler
-	Watcher
-}
 
 // HTTPError sends a human-readable HTTP error page
 func HTTPError(w http.ResponseWriter, err string, code int) {
@@ -29,6 +24,7 @@ func HTTPError(w http.ResponseWriter, err string, code int) {
 		html.EscapeString(err))
 }
 
-func setMustRevalidate(w http.ResponseWriter) {
+// SetMustRevalidate sets a response's cache-control to must-revalidate
+func SetMustRevalidate(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "must-revalidate, max-age=0")
 }

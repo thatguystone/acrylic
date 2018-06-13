@@ -1,4 +1,4 @@
-package acrylic
+package sass
 
 import (
 	"net/http"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/watch"
 	"github.com/thatguystone/cog/check"
 )
 
@@ -30,16 +31,12 @@ func TestSassBasic(t *testing.T) {
 	})
 	defer tmp.Remove()
 
-	sass := NewSass(SassConfig{
-		Entries: []string{
-			tmp.Path("all.scss"),
-		},
-		IncludePaths: []string{
+	sass := New(
+		tmp.Path("all.scss"),
+		IncludePaths(
 			tmp.Path("more"),
-			tmp.Path("more2"),
-		},
-		Logf: c.Logf,
-	})
+			tmp.Path("more2")),
+		LogTo(c.Logf))
 
 	rr := hit(sass)
 	c.Equal(rr.Code, http.StatusOK)
@@ -57,17 +54,13 @@ func TestSassChange(t *testing.T) {
 	})
 	defer tmp.Remove()
 
-	w := NewWatch(tmp.Path("."))
+	w := watch.New(tmp.Path("."))
 	defer w.Stop()
 
-	sass := NewSass(SassConfig{
-		Entries: []string{
-			tmp.Path("all.scss"),
-		},
-		Logf: c.Logf,
-	})
-
-	w.Notify(sass)
+	sass := New(
+		tmp.Path("all.scss"),
+		LogTo(c.Logf),
+		Watcher(w))
 
 	rr := hit(sass)
 	c.Equal(rr.Code, http.StatusOK)
@@ -89,12 +82,9 @@ func TestSassErrors(t *testing.T) {
 	})
 	defer tmp.Remove()
 
-	sass := NewSass(SassConfig{
-		Entries: []string{
-			tmp.Path("all.scss"),
-		},
-		Logf: c.Logf,
-	})
+	sass := New(
+		tmp.Path("all.scss"),
+		LogTo(c.Logf))
 
 	rr := hit(sass)
 	c.Equal(rr.Code, http.StatusInternalServerError)

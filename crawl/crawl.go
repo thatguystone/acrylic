@@ -1,3 +1,5 @@
+// Package crawl implements an HTTP crawler for producing static sites from
+// http.Handlers
 package crawl
 
 import (
@@ -8,21 +10,11 @@ import (
 	"sync"
 )
 
-// Config configures what the Crawler does
-type Config struct {
-	Handler     http.Handler           // Handler to crawl
-	Entries     []*url.URL             // Entry points to crawl
-	Output      string                 // Build directory
-	Transforms  map[string][]Transform // Transforms to apply, by media type
-	Fingerprint FingerprintCb          // Fingerprint the page?
-	CleanDirs   []string               // Any extra directories to clean
-}
-
 // Crawl performs a crawl with the given config
-func Crawl(cfg Config) (Site, error) {
-	cr := newCrawler(cfg)
+func Crawl(h http.Handler, opts ...Option) (Site, error) {
+	cr := newCrawler(h, opts...)
 
-	for _, entry := range cr.cfg.Entries {
+	for _, entry := range cr.entries {
 		cr.get(entry)
 	}
 
@@ -41,9 +33,13 @@ func Crawl(cfg Config) (Site, error) {
 }
 
 type crawler struct {
-	cfg        Config
-	transforms map[string][]Transform
-	wg         sync.WaitGroup
+	handler     http.Handler
+	entries     []*url.URL
+	output      string
+	transforms  map[string][]Transform
+	fingerprint func(u *url.URL, mediaType string) bool
+	cleanDirs   []string
+	wg          sync.WaitGroup
 
 	mtx  sync.Mutex
 	err  SiteError
@@ -51,25 +47,13 @@ type crawler struct {
 	used map[string]struct{} // Absolute paths to all used files and directories
 }
 
-func newCrawler(cfg Config) *crawler {
-	if len(cfg.Entries) == 0 {
-		cfg.Entries = []*url.URL{
-			{Path: "/"},
-		}
-	}
-
-	if cfg.Output == "" {
-		cfg.Output = "./public"
-	}
-
-	if cfg.Fingerprint == nil {
-		cfg.Fingerprint = func(*url.URL, string) bool { return false }
-	}
-
-	cr := crawler{
-		cfg:        cfg,
-		transforms: make(map[string][]Transform),
-		err:        make(SiteError),
+func newCrawler(h http.Handler, opts ...Option) *crawler {
+	cr := &crawler{
+		handler:     h,
+		output:      "./public",
+		transforms:  make(map[string][]Transform),
+		fingerprint: func(*url.URL, string) bool { return false },
+		err:         make(SiteError),
 		site: Site{
 			urls:   make(map[string]*Page),
 			pages:  make(map[string]*Page),
@@ -78,25 +62,31 @@ func newCrawler(cfg Config) *crawler {
 		used: make(map[string]struct{}),
 	}
 
-	for contType, ts := range cfg.Transforms {
-		cr.addTransforms(contType, ts...)
+	for _, opt := range opts {
+		opt.applyTo(cr)
 	}
 
-	// Default transforms always come after user-supplied transforms so that
-	// the defaults may work on final, user-provided content.
-	for contType, ts := range defaultTransforms {
-		cr.addTransforms(contType, ts...)
+	if len(cr.entries) == 0 {
+		cr.entries = []*url.URL{
+			{Path: "/"},
+		}
 	}
 
-	return &cr
+	// Default transforms always come after user-supplied transforms so that the
+	// defaults may work on final, user-provided content.
+	for mediaType, ts := range defaultTransforms {
+		cr.addTransforms(mediaType, ts...)
+	}
+
+	return cr
 }
 
-func (cr *crawler) fingerprint(u url.URL, mediaType string) bool {
-	return cr.cfg.Fingerprint(&u, mediaType)
+func (cr *crawler) shouldFingerprint(u url.URL, mediaType string) bool {
+	return cr.fingerprint(&u, mediaType)
 }
 
-func (cr *crawler) addTransforms(contType string, ts ...Transform) {
-	cr.transforms[contType] = append(cr.transforms[contType], ts...)
+func (cr *crawler) addTransforms(mediaType string, ts ...Transform) {
+	cr.transforms[mediaType] = append(cr.transforms[mediaType], ts...)
 }
 
 func (cr *crawler) addError(u url.URL, err error) {
@@ -189,8 +179,8 @@ func (cr *crawler) claimFile(pg *Page, file string) error {
 }
 
 func (cr *crawler) clean() error {
-	dirs := []string{absPath(cr.cfg.Output)}
-	for _, dir := range cr.cfg.CleanDirs {
+	dirs := []string{absPath(cr.output)}
+	for _, dir := range cr.cleanDirs {
 		dirs = append(dirs, absPath(dir))
 	}
 

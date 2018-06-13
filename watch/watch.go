@@ -1,4 +1,5 @@
-package acrylic
+// Package watch implements a filesystem watcher
+package watch
 
 import (
 	"fmt"
@@ -10,15 +11,18 @@ import (
 
 // A Watcher receives notifications of changes
 type Watcher interface {
-	Changed(evs WatchEvents)
+	Changed(evs Events)
 }
 
+// Watch wraps file system watchers and provides a nice interface to receive
+// change notifications
 type Watch struct {
 	evs      chan notify.EventInfo
 	watchers chan Watcher
 }
 
-func NewWatch(paths ...string) *Watch {
+// New creates a new Watch that monitors the given paths
+func New(paths ...string) *Watch {
 	w := &Watch{
 		evs:      make(chan notify.EventInfo, 16),
 		watchers: make(chan Watcher, 1),
@@ -46,7 +50,7 @@ func (w *Watch) Notify(wr Watcher) {
 	}
 }
 
-// Stop stops all further notifications and destroys all watches
+// Stop terminates this instance
 func (w *Watch) Stop() {
 	notify.Stop(w.evs)
 	close(w.evs)
@@ -56,7 +60,7 @@ func (w *Watch) run() {
 	delay := time.NewTimer(time.Hour)
 	delay.Stop()
 
-	var evs WatchEvents
+	var evs Events
 	var watchers []Watcher
 
 	for {
@@ -82,11 +86,11 @@ func (w *Watch) run() {
 	}
 }
 
-// WatchEvents is a collection of change events
-type WatchEvents []notify.EventInfo
+// Events is a collection of change events
+type Events []notify.EventInfo
 
 // HasExt checks if any event path has the given extension
-func (evs WatchEvents) HasExt(ext string) bool {
+func (evs Events) HasExt(ext string) bool {
 	for _, ev := range evs {
 		if filepath.Ext(ev.Path()) == ext {
 			return true

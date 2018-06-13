@@ -1,4 +1,5 @@
-package acrylic
+// Package sass implements a sass compiler
+package sass
 
 import (
 	"bytes"
@@ -9,19 +10,17 @@ import (
 	"time"
 
 	"github.com/thatguystone/acrylic/crawl"
+	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/watch"
 	"github.com/thatguystone/cog/stringc"
 	"github.com/wellington/go-libsass"
 )
 
-type SassConfig struct {
-	Entries      []string                     // Top-level files to build
-	IncludePaths []string                     // Search directories for imports
-	Logf         func(string, ...interface{}) // Where to log messages
-}
-
 type sass struct {
-	cfg     SassConfig
-	changed chan struct{}
+	entries      []string
+	includePaths []string
+	logf         func(string, ...interface{})
+	changed      chan struct{}
 
 	rwmtx      sync.RWMutex
 	compiled   []byte
@@ -29,14 +28,16 @@ type sass struct {
 	lastMod    *time.Time
 }
 
-func NewSass(cfg SassConfig) HandlerWatcher {
-	if cfg.Logf == nil {
-		cfg.Logf = log.Printf
+// New creates a new sass compiler
+func New(entry string, opts ...Option) http.Handler {
+	s := &sass{
+		entries: []string{entry},
+		logf:    log.Printf,
+		changed: make(chan struct{}, 1),
 	}
 
-	s := sass{
-		cfg:     cfg,
-		changed: make(chan struct{}, 1),
+	for _, opt := range opts {
+		opt.applyTo(s)
 	}
 
 	// Lock, pending first build
@@ -45,10 +46,10 @@ func NewSass(cfg SassConfig) HandlerWatcher {
 
 	s.changed <- struct{}{}
 
-	return &s
+	return s
 }
 
-func (s *sass) Changed(evs WatchEvents) {
+func (s *sass) Changed(evs watch.Events) {
 	if evs.HasExt(".scss") {
 		s.changed <- struct{}{}
 	}
@@ -64,17 +65,17 @@ func (s *sass) run() {
 		first = false
 
 		start := time.Now()
-		s.cfg.Logf("I: sass %s: rebuilding...\n", s.cfg.Entries)
+		s.logf("I: sass %s: rebuilding...\n", s.entries)
 		s.compileErr = s.rebuild()
 
 		s.rwmtx.Unlock()
 
 		if s.compileErr == nil {
-			s.cfg.Logf("I: sass %s: rebuild took %s\n",
-				s.cfg.Entries, time.Since(start))
+			s.logf("I: sass %s: rebuild took %s\n",
+				s.entries, time.Since(start))
 		} else {
-			s.cfg.Logf("E: sass %s: rebuild failed:\n%v",
-				s.cfg.Entries, stringc.Indent(s.compileErr.Error(), crawl.ErrIndent))
+			s.logf("E: sass %s: rebuild failed:\n%v",
+				s.entries, stringc.Indent(s.compileErr.Error(), crawl.ErrIndent))
 		}
 	}
 }
@@ -87,12 +88,12 @@ func (s *sass) rebuild() error {
 	var imports []string
 	var buff bytes.Buffer
 
-	for _, path := range s.cfg.Entries {
+	for _, path := range s.entries {
 		imports = append(imports, path)
 
 		comp, err := libsass.New(&buff, nil,
 			libsass.Path(path),
-			libsass.IncludePaths(s.cfg.IncludePaths),
+			libsass.IncludePaths(s.includePaths),
 
 			// Default to Nested: it's Crawl's job to compress
 			libsass.OutputStyle(libsass.NESTED_STYLE))
@@ -140,12 +141,13 @@ func (s *sass) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer s.rwmtx.RUnlock()
 
 	if s.compileErr != nil {
-		HTTPError(w, s.compileErr.Error(), http.StatusInternalServerError)
+		internal.HTTPError(
+			w, s.compileErr.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	setMustRevalidate(w)
+	internal.SetMustRevalidate(w)
 	http.ServeContent(
 		w, r, "",
 		s.getLastMod(), bytes.NewReader(s.compiled))

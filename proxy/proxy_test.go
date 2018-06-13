@@ -1,4 +1,4 @@
-package acrylic
+package proxy
 
 import (
 	"net"
@@ -16,7 +16,9 @@ func TestProxyBasic(t *testing.T) {
 	c.Must.Nil(err)
 	defer l.Close()
 
-	p, err := NewProxy("http://" + l.Addr().String())
+	p, err := New(
+		"http://"+l.Addr().String(),
+		ErrorLog(c.Log))
 	c.Must.Nil(err)
 
 	err = <-p.PollReady(1 * time.Millisecond)
@@ -26,7 +28,9 @@ func TestProxyBasic(t *testing.T) {
 func TestProxyNotReady(t *testing.T) {
 	c := check.New(t)
 
-	p, err := NewProxy("http://127.0.0.1:999999")
+	p, err := New(
+		"http://127.0.0.1:999999",
+		ErrorLog(c.Log))
 	c.Must.Nil(err)
 
 	err = <-p.PollReady(1 * time.Millisecond)
@@ -40,7 +44,7 @@ func TestProxyNotReady(t *testing.T) {
 func TestProxyURLParseError(t *testing.T) {
 	c := check.New(t)
 
-	_, err := NewProxy(`%20://`)
+	_, err := New(`%20://`)
 	c.Must.NotNil(err)
 	c.Contains(err.Error(), "failed to parse")
 }

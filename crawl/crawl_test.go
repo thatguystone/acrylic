@@ -48,17 +48,13 @@ func TestCrawlClean(t *testing.T) {
 	})
 	defer tmp.Remove()
 
-	cfg := Config{
-		Output: tmp.Path("/public"),
-		CleanDirs: []string{
+	cr := newCrawler(nil,
+		Output(tmp.Path("/public")),
+		CleanDirs(
 			tmp.Path("/cache0"),
 			tmp.Path("/cache0/nested"),
 			tmp.Path("/cache1"),
-			tmp.Path("/does-not-exist"),
-		},
-	}
-
-	cr := newCrawler(cfg)
+			tmp.Path("/does-not-exist")))
 	cr.setUsed(tmp.Path("/public/file"))
 	cr.setUsed(tmp.Path("/cache0/file"))
 	err := cr.clean()
@@ -123,8 +119,8 @@ func TestCrawlClaimCollision(t *testing.T) {
 			tmp := internal.NewTmpDir(c, nil)
 			defer tmp.Remove()
 
-			cfg := Config{
-				Handler: mux(map[string]http.Handler{
+			cr := newCrawler(
+				mux(map[string]http.Handler{
 					"/img.gif": stringHandler{
 						contType: internal.GifType,
 						body:     string(internal.GifBin),
@@ -134,13 +130,10 @@ func TestCrawlClaimCollision(t *testing.T) {
 						body:     string(internal.GifBin),
 					},
 				}),
-				Output: tmp.Path("/public"),
-				Fingerprint: func(u *url.URL, mediaType string) bool {
+				Output(tmp.Path("/public")),
+				Fingerprint(func(u *url.URL, mediaType string) bool {
 					return strings.Contains(u.Path, "img.gif")
-				},
-			}
-
-			cr := newCrawler(cfg)
+				}))
 
 			for _, path := range test.paths {
 				cr.get(&url.URL{Path: path})
@@ -227,8 +220,8 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 			tmp := internal.NewTmpDir(c, nil)
 			defer tmp.Remove()
 
-			cfg := Config{
-				Handler: mux(map[string]http.Handler{
+			cr := newCrawler(
+				mux(map[string]http.Handler{
 					"/index": stringHandler{
 						contType: DefaultType,
 						body:     `file`,
@@ -242,10 +235,7 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 						body:     `nested`,
 					},
 				}),
-				Output: tmp.Path("/public"),
-			}
-
-			cr := newCrawler(cfg)
+				Output(tmp.Path("/public")))
 
 			for _, path := range test.paths {
 				cr.get(&url.URL{Path: path})

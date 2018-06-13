@@ -8,11 +8,13 @@ import (
 	"github.com/thatguystone/cog/check"
 )
 
+// A TmpDir is used for testing
 type TmpDir struct {
 	c    *check.C
 	root string
 }
 
+// NewTmpDir creates a new temp directory
 func NewTmpDir(c *check.C, files map[string]string) *TmpDir {
 	root, err := ioutil.TempDir("", "acrylic-test-")
 	c.Must.Nil(err)
@@ -41,11 +43,13 @@ func NewTmpDir(c *check.C, files map[string]string) *TmpDir {
 	return &tmp
 }
 
+// Remove removes the temp dir and everything in it
 func (tmp *TmpDir) Remove() {
 	err := os.RemoveAll(tmp.root)
 	tmp.c.Nil(err)
 }
 
+// Path gets the path to a file in the temp dir
 func (tmp *TmpDir) Path(p string) string {
 	return filepath.Join(tmp.root, filepath.Clean(p))
 }
@@ -66,6 +70,7 @@ func (tmp *TmpDir) walk(path string, cb func(rel, abs string)) {
 		})
 }
 
+// DumpTree dumps the FS tree of the temp dir to the test's logger
 func (tmp *TmpDir) DumpTree() {
 	tmp.c.Helper()
 	tmp.c.Logf("Tree rooted at: %q", tmp.root)
@@ -75,6 +80,7 @@ func (tmp *TmpDir) DumpTree() {
 	})
 }
 
+// GetFiles gets a map of all files in the temp dir with their contents
 func (tmp *TmpDir) GetFiles() map[string]string {
 	m := make(map[string]string)
 
@@ -88,12 +94,14 @@ func (tmp *TmpDir) GetFiles() map[string]string {
 	return m
 }
 
+// ReadFile reads a file from the temp dir
 func (tmp *TmpDir) ReadFile(path string) string {
 	b, err := ioutil.ReadFile(tmp.Path(path))
 	tmp.c.Must.Nil(err)
 	return string(b)
 }
 
+// WriteFile writes a file to the temp dir, creating parents as necessary
 func (tmp *TmpDir) WriteFile(path string, b string) {
 	path = tmp.Path(path)
 
