@@ -12,14 +12,15 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/cog/check"
 )
 
 func TestPageAddIndexSanity(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
+	tmp := internal.NewTmpDir(c, nil)
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -28,21 +29,21 @@ func TestPageAddIndexSanity(t *testing.T) {
 				body:     `index`,
 			},
 		}),
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Nil(err)
-	tmp.dumpTree()
+	tmp.DumpTree()
 
-	c.Equal(tmp.readFile("/public/index.html"), `index`)
+	c.Equal(tmp.ReadFile("/public/index.html"), `index`)
 }
 
 func TestPageFingerprint(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
+	tmp := internal.NewTmpDir(c, nil)
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -55,7 +56,7 @@ func TestPageFingerprint(t *testing.T) {
 				body:     `body { background: #000; }`,
 			},
 		}),
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 		Fingerprint: func(u *url.URL, mediaType string) bool {
 			return filepath.Ext(u.Path) == ".css"
 		},
@@ -63,21 +64,21 @@ func TestPageFingerprint(t *testing.T) {
 
 	site, err := Crawl(cfg)
 	c.Must.Nil(err)
-	tmp.dumpTree()
+	tmp.DumpTree()
 
 	allCSS := site.GetPage("/all.css")
 	c.NotLen(allCSS.Fingerprint, 0)
 	c.Contains(allCSS.URL.Path, allCSS.Fingerprint)
 
-	index := tmp.readFile("/public/index.html")
+	index := tmp.ReadFile("/public/index.html")
 	c.Contains(index, allCSS.URL.Path)
 }
 
 func TestPageAlias(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
+	tmp := internal.NewTmpDir(c, nil)
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -92,12 +93,12 @@ func TestPageAlias(t *testing.T) {
 				body:     `page`,
 			},
 		}),
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 	}
 
 	site, err := Crawl(cfg)
 	c.Must.Nil(err)
-	tmp.dumpTree()
+	tmp.DumpTree()
 
 	p1 := site.Get(&url.URL{Path: "/page/", RawQuery: "p=1"})
 	c.Equal(p1.URL.RawQuery, "p=1")
@@ -113,12 +114,12 @@ func TestPageAlias(t *testing.T) {
 func TestPageOverwriteExistingOutputs(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, map[string]string{
+	tmp := internal.NewTmpDir(c, map[string]string{
 		"/public/index.html/is/a/dir/index.html": `not index`,
 		"/public/about.html":                     `not about`,
 		"/public/img.gif":                        `not a gif`,
 	})
-	defer tmp.remove()
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -133,24 +134,24 @@ func TestPageOverwriteExistingOutputs(t *testing.T) {
 				body:     `about`,
 			},
 			"/img.gif": stringHandler{
-				contType: gifType,
-				body:     string(gifBin),
+				contType: internal.GifType,
+				body:     string(internal.GifBin),
 			},
 		}),
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Nil(err)
 
-	c.Equal(tmp.readFile("/public/about.html"), `about`)
-	c.Equal(tmp.readFile("/public/img.gif"), string(gifBin))
+	c.Equal(tmp.ReadFile("/public/about.html"), `about`)
+	c.Equal(tmp.ReadFile("/public/img.gif"), string(internal.GifBin))
 }
 
 func TestPageServeFileSymlinks(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, map[string]string{
+	tmp := internal.NewTmpDir(c, map[string]string{
 		"/stuff":                     `stuff`,
 		"/stuff.txt":                 `stuff`,
 		"/stuff.css":                 ` body { } `,
@@ -158,21 +159,21 @@ func TestPageServeFileSymlinks(t *testing.T) {
 		"/public/stuff.txt/is/a/dir": `not stuff`,
 		"/public/stuff.css/is/a/dir": `not stuff`,
 	})
-	defer tmp.remove()
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
 			"/stuff": http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
-					ServeFile(w, r, tmp.path("/stuff"))
+					ServeFile(w, r, tmp.Path("/stuff"))
 				}),
 			"/stuff.txt": http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
-					ServeFile(w, r, tmp.path("/stuff.txt"))
+					ServeFile(w, r, tmp.Path("/stuff.txt"))
 				}),
 			"/stuff.css": http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
-					ServeFile(w, r, tmp.path("/stuff.css"))
+					ServeFile(w, r, tmp.Path("/stuff.css"))
 				}),
 		}),
 		Entries: []*url.URL{
@@ -180,28 +181,28 @@ func TestPageServeFileSymlinks(t *testing.T) {
 			{Path: "/stuff.txt"},
 			{Path: "/stuff.css"},
 		},
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	tmp.dumpTree()
+	tmp.DumpTree()
 
-	symSrc, err := os.Readlink(tmp.path("/public/stuff"))
+	symSrc, err := os.Readlink(tmp.Path("/public/stuff"))
 	c.Must.Nil(err)
-	c.Equal(symSrc, tmp.path("/stuff"))
-	c.Equal(tmp.readFile("/public/stuff"), `stuff`)
+	c.Equal(symSrc, tmp.Path("/stuff"))
+	c.Equal(tmp.ReadFile("/public/stuff"), `stuff`)
 
-	symSrc, err = os.Readlink(tmp.path("/public/stuff.txt"))
+	symSrc, err = os.Readlink(tmp.Path("/public/stuff.txt"))
 	c.Must.Nil(err)
-	c.Equal(symSrc, tmp.path("/stuff.txt"))
-	c.Equal(tmp.readFile("/public/stuff.txt"), `stuff`)
+	c.Equal(symSrc, tmp.Path("/stuff.txt"))
+	c.Equal(tmp.ReadFile("/public/stuff.txt"), `stuff`)
 
 	// Files with transforms shouldn't be linked
-	symSrc, err = os.Readlink(tmp.path("/public/stuff.css"))
+	symSrc, err = os.Readlink(tmp.Path("/public/stuff.css"))
 	c.NotNil(err)
 	c.Equal(symSrc, "")
-	c.Equal(tmp.readFile("/public/stuff.css"), `body{}`)
+	c.Equal(tmp.ReadFile("/public/stuff.css"), `body{}`)
 }
 
 var variantHandler = mux(map[string]http.Handler{
@@ -237,17 +238,17 @@ var variantHandler = mux(map[string]http.Handler{
 func TestPageVariantBasic(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
+	tmp := internal.NewTmpDir(c, nil)
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: variantHandler,
-		Output:  tmp.path("/public"),
+		Output:  tmp.Path("/public"),
 	}
 
 	site, err := Crawl(cfg)
 	c.Must.Nil(err)
-	tmp.dumpTree()
+	tmp.DumpTree()
 
 	c.Equal(
 		site.Get(&url.URL{Path: "/people/", RawQuery: "who=bob"}).URL.Path,
@@ -256,23 +257,23 @@ func TestPageVariantBasic(t *testing.T) {
 		site.Get(&url.URL{Path: "/people/", RawQuery: "who=alice"}).URL.Path,
 		"/people/alice.html")
 
-	index := tmp.readFile("/public/index.html")
+	index := tmp.ReadFile("/public/index.html")
 	c.Contains(index, "people/bob.html")
 	c.Contains(index, "people/alice.html")
 
-	c.Equal(tmp.readFile("/public/people/bob.html"), "bob is a person")
-	c.Equal(tmp.readFile("/public/people/alice.html"), "alice is cool")
+	c.Equal(tmp.ReadFile("/public/people/bob.html"), "bob is a person")
+	c.Equal(tmp.ReadFile("/public/people/alice.html"), "alice is cool")
 }
 
 func TestPageVariantFingerprint(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
+	tmp := internal.NewTmpDir(c, nil)
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: variantHandler,
-		Output:  tmp.path("/public"),
+		Output:  tmp.Path("/public"),
 		Fingerprint: func(u *url.URL, mediaType string) bool {
 			return u.Path != "/"
 		},
@@ -280,7 +281,7 @@ func TestPageVariantFingerprint(t *testing.T) {
 
 	site, err := Crawl(cfg)
 	c.Must.Nil(err)
-	tmp.dumpTree()
+	tmp.DumpTree()
 
 	bob := site.Get(&url.URL{Path: "/people/", RawQuery: "who=bob"})
 	c.NotContains(bob.URL.Path, "bob.html")
@@ -290,23 +291,23 @@ func TestPageVariantFingerprint(t *testing.T) {
 	c.NotContains(alice.URL.Path, "alice.html")
 	c.NotEqual(alice.Fingerprint, "")
 
-	index := tmp.readFile("/public/index.html")
+	index := tmp.ReadFile("/public/index.html")
 	c.Contains(index, bob.Fingerprint)
 	c.Contains(index, alice.Fingerprint)
 
 	c.Equal(
-		tmp.readFile(filepath.Join("/public", bob.URL.Path)),
+		tmp.ReadFile(filepath.Join("/public", bob.URL.Path)),
 		"bob is a person")
 	c.Equal(
-		tmp.readFile(filepath.Join("/public", alice.URL.Path)),
+		tmp.ReadFile(filepath.Join("/public", alice.URL.Path)),
 		"alice is cool")
 }
 
 func TestPageURLFragments(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
+	tmp := internal.NewTmpDir(c, nil)
+	defer tmp.Remove()
 
 	links := []string{
 		"//google.com#frag-1",
@@ -337,14 +338,14 @@ func TestPageURLFragments(t *testing.T) {
 				body:     `<div id="frag"></div>`,
 			},
 		}),
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	tmp.dumpTree()
+	tmp.DumpTree()
 
-	index := tmp.readFile("/public/index.html")
+	index := tmp.ReadFile("/public/index.html")
 	for _, link := range links {
 		c.Contains(index, link)
 	}
@@ -353,8 +354,8 @@ func TestPageURLFragments(t *testing.T) {
 func TestPageRedirectBasic(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, nil)
-	defer tmp.remove()
+	tmp := internal.NewTmpDir(c, nil)
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -371,13 +372,13 @@ func TestPageRedirectBasic(t *testing.T) {
 				body:     `file`,
 			},
 		}),
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 	}
 
 	site, err := Crawl(cfg)
 	c.Nil(err)
 
-	index := tmp.readFile("/public/index.html")
+	index := tmp.ReadFile("/public/index.html")
 	c.Contains(index, "/f/")
 	c.NotContains(index, "/r/")
 
@@ -389,12 +390,12 @@ func TestPageRedirectBasic(t *testing.T) {
 func TestPageBodyChanged(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, map[string]string{
+	tmp := internal.NewTmpDir(c, map[string]string{
 		"/public/index.html":        `index`,
 		"/public/page/1/index.html": `page 0`,
 		"/public/page/2/index.html": `totally different`,
 	})
-	defer tmp.remove()
+	defer tmp.Remove()
 
 	cfg := Config{
 		Handler: mux(map[string]http.Handler{
@@ -416,16 +417,16 @@ func TestPageBodyChanged(t *testing.T) {
 			&url.URL{Path: "/page/1/"},
 			&url.URL{Path: "/page/2/"},
 		},
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 	}
 
 	_, err := Crawl(cfg)
 	c.Must.Nil(err)
-	tmp.dumpTree()
+	tmp.DumpTree()
 
-	c.Equal(tmp.readFile("/public/index.html"), "index")
-	c.Equal(tmp.readFile("/public/page/1/index.html"), "page 1")
-	c.Equal(tmp.readFile("/public/page/2/index.html"), "page 2")
+	c.Equal(tmp.ReadFile("/public/index.html"), "index")
+	c.Equal(tmp.ReadFile("/public/page/1/index.html"), "page 1")
+	c.Equal(tmp.ReadFile("/public/page/2/index.html"), "page 2")
 }
 
 func TestPageErrors(t *testing.T) {
@@ -490,7 +491,7 @@ func TestPageErrors(t *testing.T) {
 			cfg: Config{
 				Handler: mux(map[string]http.Handler{
 					"/page.html": stringHandler{
-						contType: gifType,
+						contType: internal.GifType,
 					},
 				}),
 				Entries: []*url.URL{
@@ -502,7 +503,7 @@ func TestPageErrors(t *testing.T) {
 					MimeTypeMismatchError{
 						Ext:          ".html",
 						Guess:        htmlType,
-						FromResponse: gifType,
+						FromResponse: internal.GifType,
 					},
 				},
 			},
@@ -512,7 +513,7 @@ func TestPageErrors(t *testing.T) {
 			cfg: Config{
 				Handler: mux(map[string]http.Handler{
 					"/page.not-an-ext": stringHandler{
-						contType: gifType,
+						contType: internal.GifType,
 					},
 				}),
 				Entries: []*url.URL{
@@ -524,7 +525,7 @@ func TestPageErrors(t *testing.T) {
 					MimeTypeMismatchError{
 						Ext:          ".not-an-ext",
 						Guess:        DefaultType,
-						FromResponse: gifType,
+						FromResponse: internal.GifType,
 					},
 				},
 			},
@@ -683,10 +684,10 @@ func TestPageErrors(t *testing.T) {
 		test := test
 
 		c.Run(test.name, func(c *check.C) {
-			tmp := newTmpDir(c, nil)
-			defer tmp.remove()
+			tmp := internal.NewTmpDir(c, nil)
+			defer tmp.Remove()
 
-			test.cfg.Output = tmp.path("/public")
+			test.cfg.Output = tmp.Path("/public")
 
 			_, err := Crawl(test.cfg)
 			c.Equal(err, test.err)

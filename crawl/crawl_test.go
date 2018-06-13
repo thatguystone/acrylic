@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/cog/check"
 )
 
@@ -35,7 +36,7 @@ func (h stringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func TestCrawlClean(t *testing.T) {
 	c := check.New(t)
 
-	tmp := newTmpDir(c, map[string]string{
+	tmp := internal.NewTmpDir(c, map[string]string{
 		"/public/dir/dir/file": ``,
 		"/public/dir/file":     ``,
 		"/public/file":         ``,
@@ -45,25 +46,25 @@ func TestCrawlClean(t *testing.T) {
 		"/cache0/nested/file":  ``,
 		"/cache1/file":         ``,
 	})
-	defer tmp.remove()
+	defer tmp.Remove()
 
 	cfg := Config{
-		Output: tmp.path("/public"),
+		Output: tmp.Path("/public"),
 		CleanDirs: []string{
-			tmp.path("/cache0"),
-			tmp.path("/cache0/nested"),
-			tmp.path("/cache1"),
-			tmp.path("/does-not-exist"),
+			tmp.Path("/cache0"),
+			tmp.Path("/cache0/nested"),
+			tmp.Path("/cache1"),
+			tmp.Path("/does-not-exist"),
 		},
 	}
 
 	cr := newCrawler(cfg)
-	cr.setUsed(tmp.path("/public/file"))
-	cr.setUsed(tmp.path("/cache0/file"))
+	cr.setUsed(tmp.Path("/public/file"))
+	cr.setUsed(tmp.Path("/cache0/file"))
 	err := cr.clean()
 	c.Nil(err)
 
-	c.Equal(tmp.getFiles(), map[string]string{
+	c.Equal(tmp.GetFiles(), map[string]string{
 		"/public/file": ``,
 		"/cache0/file": ``,
 	})
@@ -72,25 +73,25 @@ func TestCrawlClean(t *testing.T) {
 func TestCrawlClaimCollision(t *testing.T) {
 	c := check.New(t)
 
-	gifPrint, err := fingerprint(bytes.NewReader(gifBin))
+	gifPrint, err := fingerprint(bytes.NewReader(internal.GifBin))
 	c.Must.Nil(err)
 
 	fpPath := "/img." + gifPrint + ".gif"
 
 	tests := []struct {
 		paths  []string
-		getErr func(tmp *tmpDir) SiteError
+		getErr func(tmp *internal.TmpDir) SiteError
 	}{
 		{
 			paths: []string{
 				"/img.gif",
 				fpPath,
 			},
-			getErr: func(tmp *tmpDir) SiteError {
+			getErr: func(tmp *internal.TmpDir) SiteError {
 				return SiteError{
 					fpPath: {
 						FileAlreadyClaimedError{
-							File:     tmp.path(filepath.Join("public", fpPath)),
+							File:     tmp.Path(filepath.Join("public", fpPath)),
 							OwnerURL: "/img.gif",
 						},
 					},
@@ -102,11 +103,11 @@ func TestCrawlClaimCollision(t *testing.T) {
 				fpPath,
 				"/img.gif",
 			},
-			getErr: func(tmp *tmpDir) SiteError {
+			getErr: func(tmp *internal.TmpDir) SiteError {
 				return SiteError{
 					"/img.gif": {
 						FileAlreadyClaimedError{
-							File:     tmp.path(filepath.Join("public", fpPath)),
+							File:     tmp.Path(filepath.Join("public", fpPath)),
 							OwnerURL: fpPath,
 						},
 					},
@@ -119,21 +120,21 @@ func TestCrawlClaimCollision(t *testing.T) {
 		test := test
 
 		c.Run(test.paths[0], func(c *check.C) {
-			tmp := newTmpDir(c, nil)
-			defer tmp.remove()
+			tmp := internal.NewTmpDir(c, nil)
+			defer tmp.Remove()
 
 			cfg := Config{
 				Handler: mux(map[string]http.Handler{
 					"/img.gif": stringHandler{
-						contType: gifType,
-						body:     string(gifBin),
+						contType: internal.GifType,
+						body:     string(internal.GifBin),
 					},
 					fpPath: stringHandler{
-						contType: gifType,
-						body:     string(gifBin),
+						contType: internal.GifType,
+						body:     string(internal.GifBin),
 					},
 				}),
-				Output: tmp.path("/public"),
+				Output: tmp.Path("/public"),
 				Fingerprint: func(u *url.URL, mediaType string) bool {
 					return strings.Contains(u.Path, "img.gif")
 				},
@@ -159,15 +160,15 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 
 	tests := []struct {
 		paths  []string
-		getErr func(tmp *tmpDir) SiteError
+		getErr func(tmp *internal.TmpDir) SiteError
 	}{
 		{
 			paths: []string{
 				"/index",
 				"/index/",
 			},
-			getErr: func(tmp *tmpDir) SiteError {
-				path := tmp.path(filepath.Join("public", "index"))
+			getErr: func(tmp *internal.TmpDir) SiteError {
+				path := tmp.Path(filepath.Join("public", "index"))
 				return SiteError{
 					"/index/": {
 						FileDirMismatchError(path),
@@ -180,8 +181,8 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index/",
 				"/index",
 			},
-			getErr: func(tmp *tmpDir) SiteError {
-				path := tmp.path(filepath.Join("public", "index"))
+			getErr: func(tmp *internal.TmpDir) SiteError {
+				path := tmp.Path(filepath.Join("public", "index"))
 				return SiteError{
 					"/index": {
 						FileDirMismatchError(path),
@@ -194,8 +195,8 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index",
 				"/index/nested/page/",
 			},
-			getErr: func(tmp *tmpDir) SiteError {
-				path := tmp.path(filepath.Join("public", "index"))
+			getErr: func(tmp *internal.TmpDir) SiteError {
+				path := tmp.Path(filepath.Join("public", "index"))
 				return SiteError{
 					"/index/nested/page/": {
 						FileDirMismatchError(path),
@@ -208,8 +209,8 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index/nested/page/",
 				"/index",
 			},
-			getErr: func(tmp *tmpDir) SiteError {
-				path := tmp.path(filepath.Join("public", "index"))
+			getErr: func(tmp *internal.TmpDir) SiteError {
+				path := tmp.Path(filepath.Join("public", "index"))
 				return SiteError{
 					"/index": {
 						FileDirMismatchError(path),
@@ -223,8 +224,8 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 		test := test
 
 		c.Run(test.paths[0], func(c *check.C) {
-			tmp := newTmpDir(c, nil)
-			defer tmp.remove()
+			tmp := internal.NewTmpDir(c, nil)
+			defer tmp.Remove()
 
 			cfg := Config{
 				Handler: mux(map[string]http.Handler{
@@ -241,7 +242,7 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 						body:     `nested`,
 					},
 				}),
-				Output: tmp.path("/public"),
+				Output: tmp.Path("/public"),
 			}
 
 			cr := newCrawler(cfg)

@@ -1,4 +1,4 @@
-package crawl
+package internal
 
 import (
 	"io/ioutil"
@@ -8,50 +8,50 @@ import (
 	"github.com/thatguystone/cog/check"
 )
 
-type tmpDir struct {
+type TmpDir struct {
 	c    *check.C
 	root string
 }
 
-func newTmpDir(c *check.C, files map[string]string) *tmpDir {
+func NewTmpDir(c *check.C, files map[string]string) *TmpDir {
 	root, err := ioutil.TempDir("", "acrylic-test-")
 	c.Must.Nil(err)
 
-	tmp := tmpDir{
+	tmp := TmpDir{
 		c:    c,
 		root: root,
 	}
 
 	defer func() {
 		if err != nil {
-			tmp.remove()
+			tmp.Remove()
 		}
 	}()
 
 	for path, content := range files {
-		path = tmp.path(path)
+		path = tmp.Path(path)
 
 		err = os.MkdirAll(filepath.Dir(path), 0750)
 		c.Must.Nil(err)
 
-		err = ioutil.WriteFile(path, []byte(content), 0600)
+		err = ioutil.WriteFile(path, []byte(content), 0640)
 		c.Must.Nil(err)
 	}
 
 	return &tmp
 }
 
-func (tmp *tmpDir) remove() {
+func (tmp *TmpDir) Remove() {
 	err := os.RemoveAll(tmp.root)
 	tmp.c.Nil(err)
 }
 
-func (tmp *tmpDir) path(p string) string {
+func (tmp *TmpDir) Path(p string) string {
 	return filepath.Join(tmp.root, filepath.Clean(p))
 }
 
-func (tmp *tmpDir) walk(path string, cb func(rel, abs string)) {
-	filepath.Walk(tmp.path(path),
+func (tmp *TmpDir) walk(path string, cb func(rel, abs string)) {
+	filepath.Walk(tmp.Path(path),
 		func(path string, info os.FileInfo, err error) error {
 			tmp.c.Must.Nil(err)
 
@@ -66,7 +66,7 @@ func (tmp *tmpDir) walk(path string, cb func(rel, abs string)) {
 		})
 }
 
-func (tmp *tmpDir) dumpTree() {
+func (tmp *TmpDir) DumpTree() {
 	tmp.c.Helper()
 	tmp.c.Logf("Tree rooted at: %q", tmp.root)
 
@@ -75,7 +75,7 @@ func (tmp *tmpDir) dumpTree() {
 	})
 }
 
-func (tmp *tmpDir) getFiles() map[string]string {
+func (tmp *TmpDir) GetFiles() map[string]string {
 	m := make(map[string]string)
 
 	tmp.walk("/", func(rel, abs string) {
@@ -88,8 +88,18 @@ func (tmp *tmpDir) getFiles() map[string]string {
 	return m
 }
 
-func (tmp *tmpDir) readFile(path string) string {
-	b, err := ioutil.ReadFile(tmp.path(path))
+func (tmp *TmpDir) ReadFile(path string) string {
+	b, err := ioutil.ReadFile(tmp.Path(path))
 	tmp.c.Must.Nil(err)
 	return string(b)
+}
+
+func (tmp *TmpDir) WriteFile(path string, b string) {
+	path = tmp.Path(path)
+
+	err := os.MkdirAll(filepath.Dir(path), 0750)
+	tmp.c.Must.Nil(err)
+
+	err = ioutil.WriteFile(path, []byte(b), 0640)
+	tmp.c.Must.Nil(err)
 }

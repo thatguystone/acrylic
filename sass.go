@@ -13,13 +13,14 @@ import (
 	"github.com/wellington/go-libsass"
 )
 
-// Sass compiles scss files
-type Sass struct {
+type SassConfig struct {
 	Entries      []string                     // Top-level files to build
 	IncludePaths []string                     // Search directories for imports
-	Concat       []string                     // Extra files to concat to the output
 	Logf         func(string, ...interface{}) // Where to log messages
+}
 
+type sass struct {
+	cfg     SassConfig
 	changed chan struct{}
 
 	rwmtx      sync.RWMutex
@@ -28,27 +29,32 @@ type Sass struct {
 	lastMod    *time.Time
 }
 
-func (s *Sass) Start(*Watch) {
-	if s.Logf == nil {
-		s.Logf = log.Printf
+func NewSass(cfg SassConfig) HandlerWatcher {
+	if cfg.Logf == nil {
+		cfg.Logf = log.Printf
 	}
 
-	s.changed = make(chan struct{}, 1)
-	s.changed <- struct{}{}
+	s := sass{
+		cfg:     cfg,
+		changed: make(chan struct{}, 1),
+	}
 
 	// Lock, pending first build
 	s.rwmtx.Lock()
-
 	go s.run()
+
+	s.changed <- struct{}{}
+
+	return &s
 }
 
-func (s *Sass) Changed(evs WatchEvents) {
+func (s *sass) Changed(evs WatchEvents) {
 	if evs.HasExt(".scss") {
 		s.changed <- struct{}{}
 	}
 }
 
-func (s *Sass) run() {
+func (s *sass) run() {
 	first := true
 
 	for range s.changed {
@@ -58,22 +64,22 @@ func (s *Sass) run() {
 		first = false
 
 		start := time.Now()
-		s.Logf("I: sass %s: rebuilding...\n", s.Entries)
+		s.cfg.Logf("I: sass %s: rebuilding...\n", s.cfg.Entries)
 		s.compileErr = s.rebuild()
 
 		s.rwmtx.Unlock()
 
 		if s.compileErr == nil {
-			s.Logf("I: sass %s: rebuild took %s\n",
-				s.Entries, time.Since(start))
+			s.cfg.Logf("I: sass %s: rebuild took %s\n",
+				s.cfg.Entries, time.Since(start))
 		} else {
-			s.Logf("E: sass %s: rebuild failed:\n%v",
-				s.Entries, stringc.Indent(s.compileErr.Error(), crawl.ErrIndent))
+			s.cfg.Logf("E: sass %s: rebuild failed:\n%v",
+				s.cfg.Entries, stringc.Indent(s.compileErr.Error(), crawl.ErrIndent))
 		}
 	}
 }
 
-func (s *Sass) rebuild() error {
+func (s *sass) rebuild() error {
 	s.compiled = nil
 	s.compileErr = nil
 	s.lastMod = nil
@@ -81,12 +87,12 @@ func (s *Sass) rebuild() error {
 	var imports []string
 	var buff bytes.Buffer
 
-	for _, path := range s.Entries {
+	for _, path := range s.cfg.Entries {
 		imports = append(imports, path)
 
 		comp, err := libsass.New(&buff, nil,
 			libsass.Path(path),
-			libsass.IncludePaths(s.IncludePaths),
+			libsass.IncludePaths(s.cfg.IncludePaths),
 
 			// Default to Nested: it's Crawl's job to compress
 			libsass.OutputStyle(libsass.NESTED_STYLE))
@@ -120,7 +126,7 @@ func (s *Sass) rebuild() error {
 	return nil
 }
 
-func (s *Sass) getLastMod() time.Time {
+func (s *sass) getLastMod() time.Time {
 	if s.lastMod != nil {
 		return *s.lastMod
 	}
@@ -129,7 +135,7 @@ func (s *Sass) getLastMod() time.Time {
 }
 
 // ServeHTTP implements http.Handler
-func (s *Sass) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *sass) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.rwmtx.RLock()
 	defer s.rwmtx.RUnlock()
 
@@ -139,7 +145,7 @@ func (s *Sass) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	setCacheHeaders(w)
+	setMustRevalidate(w)
 	http.ServeContent(
 		w, r, "",
 		s.getLastMod(), bytes.NewReader(s.compiled))

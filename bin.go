@@ -1,5 +1,7 @@
 package acrylic
 
+//gocovr:skip-file
+
 import (
 	"errors"
 	"fmt"
@@ -15,12 +17,15 @@ import (
 )
 
 // A Bin builds a binary and proxies all traffic to it
-type Bin struct {
+type BinConfig struct {
 	BuildCmd []string // Command to build
 	RunCmd   []string // Command to run
 	ProxyTo  string   // Address to proxy requests to
 	Exts     []string // Extensions to use to check for changes
+}
 
+type bin struct {
+	cfg     BinConfig
 	changed chan struct{}
 
 	rwmtx  sync.RWMutex
@@ -30,30 +35,35 @@ type Bin struct {
 	proxy  *Proxy
 }
 
-func (b *Bin) Start(w *Watch) {
-	proxy, err := NewProxy(b.ProxyTo)
+func NewBin(cfg BinConfig) HandlerWatcher {
+	proxy, err := NewProxy(cfg.ProxyTo)
 	if err != nil {
 		panic(err)
 	}
 
-	b.proxy = proxy
-	b.changed = make(chan struct{}, 1)
-	b.changed <- struct{}{}
+	b := bin{
+		cfg:     cfg,
+		changed: make(chan struct{}, 1),
+		proxy:   proxy,
+	}
 
 	// Lock, pending first build
 	b.rwmtx.Lock()
-
 	go b.run()
+
+	b.changed <- struct{}{}
+
+	return &b
 }
 
-func (b *Bin) Changed(evs WatchEvents) {
+func (b *bin) Changed(evs WatchEvents) {
 	if b.shouldRebuild(evs) {
 		b.changed <- struct{}{}
 	}
 }
 
-func (b *Bin) shouldRebuild(evs WatchEvents) bool {
-	for _, ext := range b.Exts {
+func (b *bin) shouldRebuild(evs WatchEvents) bool {
+	for _, ext := range b.cfg.Exts {
 		if evs.HasExt(ext) {
 			return true
 		}
@@ -62,7 +72,7 @@ func (b *Bin) shouldRebuild(evs WatchEvents) bool {
 	return false
 }
 
-func (b *Bin) run() {
+func (b *bin) run() {
 	first := true
 
 	for {
@@ -77,17 +87,17 @@ func (b *Bin) run() {
 			first = false
 
 			start := time.Now()
-			log.Printf("I: bin %s: rebuilding...\n", b.RunCmd[0])
+			log.Printf("I: bin %s: rebuilding...\n", b.cfg.RunCmd[0])
 			b.err = b.rebuild()
 
 			b.rwmtx.Unlock()
 
 			if b.err == nil {
 				log.Printf("I: bin %s: rebuild took %s\n",
-					b.RunCmd[0], time.Since(start))
+					b.cfg.RunCmd[0], time.Since(start))
 			} else {
 				log.Printf("E: bin %s: rebuild failed:\n%v",
-					b.RunCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
+					b.cfg.RunCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
 			}
 
 		case err := <-b.cmdErr:
@@ -96,12 +106,12 @@ func (b *Bin) run() {
 			b.rwmtx.Unlock()
 
 			log.Printf("E: bin %s: exited:\n%v",
-				b.RunCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
+				b.cfg.RunCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
 		}
 	}
 }
 
-func (b *Bin) term() {
+func (b *bin) term() {
 	if b.cmd == nil {
 		return
 	}
@@ -123,16 +133,16 @@ func (b *Bin) term() {
 	}
 }
 
-func (b *Bin) rebuild() error {
-	if len(b.BuildCmd) > 0 {
-		cmd := exec.Command(b.BuildCmd[0], b.BuildCmd[1:]...)
+func (b *bin) rebuild() error {
+	if len(b.cfg.BuildCmd) > 0 {
+		cmd := exec.Command(b.cfg.BuildCmd[0], b.cfg.BuildCmd[1:]...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return errors.New(string(out))
 		}
 	}
 
-	b.cmd = exec.Command(b.RunCmd[0], b.RunCmd[1:]...)
+	b.cmd = exec.Command(b.cfg.RunCmd[0], b.cfg.RunCmd[1:]...)
 	b.cmd.Stdout = os.Stdout
 	b.cmd.Stderr = os.Stderr
 	go func() {
@@ -155,7 +165,7 @@ func (b *Bin) rebuild() error {
 	}
 }
 
-func (b *Bin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (b *bin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b.rwmtx.RLock()
 	defer b.rwmtx.RUnlock()
 

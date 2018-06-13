@@ -10,7 +10,6 @@ import (
 
 // A Watcher receives notifications of changes
 type Watcher interface {
-	Start(w *Watch)
 	Changed(evs WatchEvents)
 }
 
@@ -43,7 +42,6 @@ func (w *Watch) Watch(paths ...string) {
 // Notify notifies the given Watcher of changes as they happen
 func (w *Watch) Notify(wr Watcher) {
 	if wr != nil {
-		wr.Start(w)
 		w.watchers <- wr
 	}
 }

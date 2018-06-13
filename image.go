@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -19,15 +20,33 @@ import (
 	"github.com/thatguystone/cog/stringc"
 )
 
-type ImageScaler struct {
-	Root  string // Root path to look for images
-	Cache string // Where to cache scaled images
+type ImageScalerConfig struct {
+	Root        string // Root path for images
+	Cache       string // Where to cache scaled images
+	MaxSubprocs int    // Maximum number of scaling subprocesses to run
 }
 
-func (*ImageScaler) Start(*Watch)        {}
-func (*ImageScaler) Changed(WatchEvents) {}
+type imageScaler struct {
+	cfg  ImageScalerConfig
+	sema chan struct{}
+}
 
-func (s *ImageScaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func NewImageScaler(cfg ImageScalerConfig) http.Handler {
+	if cfg.Cache == "" {
+		cfg.Cache = filepath.Join(cfg.Root, ".cache")
+	}
+
+	if cfg.MaxSubprocs <= 0 {
+		cfg.MaxSubprocs = runtime.NumCPU()
+	}
+
+	return &imageScaler{
+		cfg:  cfg,
+		sema: make(chan struct{}, cfg.MaxSubprocs),
+	}
+}
+
+func (s *imageScaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var opts imgOpts
 
 	err := opts.parse(r.URL.Query())
@@ -36,7 +55,7 @@ func (s *ImageScaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	origPath := filepath.Join(s.Root, r.URL.Path)
+	origPath := filepath.Join(s.cfg.Root, r.URL.Path)
 	origInfo, err := os.Stat(origPath)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -48,7 +67,7 @@ func (s *ImageScaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cachePath := filepath.Join(s.Cache, r.URL.Path, opts.query())
+	cachePath := filepath.Join(s.cfg.Cache, r.URL.Path) + opts.query()
 	cacheInfo, err := os.Stat(cachePath)
 	if err != nil && !os.IsNotExist(err) {
 		HTTPError(w, err.Error(), http.StatusInternalServerError)
@@ -69,13 +88,18 @@ func (s *ImageScaler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	crawl.ServeFile(w, r, cachePath)
 }
 
-func (s *ImageScaler) scale(
+func (s *imageScaler) scale(
 	opts imgOpts, src, dst string, origMod time.Time) (err error) {
+
+	err = os.MkdirAll(filepath.Dir(dst), 0777)
+	if err != nil {
+		return
+	}
 
 	// Use a temp file to implement atomic cache writes; specifically, write to
 	// the temp file first, then if everything is good, replace any existing
 	// cache file with the temp file (on Linux, at least, this is atomic).
-	tmpF, err := ioutil.TempFile(filepath.Dir(dst), "acrylic-")
+	tmpF, err := ioutil.TempFile(filepath.Dir(dst), opts.getTempFilePattern())
 	if err != nil {
 		return err
 	}
@@ -83,7 +107,10 @@ func (s *ImageScaler) scale(
 	tmpPath := tmpF.Name()
 	tmpF.Close()
 
+	s.sema <- struct{}{}
 	defer func() {
+		<-s.sema
+
 		if err != nil {
 			os.Remove(tmpPath)
 		}
@@ -91,12 +118,12 @@ func (s *ImageScaler) scale(
 
 	err = opts.scale(src, tmpPath)
 	if err != nil {
-		return err
+		return
 	}
 
 	err = os.Chtimes(tmpPath, time.Now(), origMod)
 	if err != nil {
-		return err
+		return
 	}
 
 	err = os.Rename(tmpPath, dst)
@@ -150,27 +177,27 @@ func (opts *imgOpts) query() string {
 	qs := make(url.Values)
 
 	if opts.W != nil {
-		qs.Set("w", strconv.Itoa(*opts.W))
+		qs.Set("W", strconv.Itoa(*opts.W))
 	}
 
 	if opts.H != nil {
-		qs.Set("h", strconv.Itoa(*opts.H))
+		qs.Set("H", strconv.Itoa(*opts.H))
 	}
 
 	if opts.Q != nil {
-		qs.Set("q", strconv.Itoa(*opts.Q))
+		qs.Set("Q", strconv.Itoa(*opts.Q))
 	}
 
 	if opts.Crop {
-		qs.Set("crop", "1")
+		qs.Set("Crop", "1")
 
 		if opts.Gravity != center {
-			qs.Set("gravity", opts.Gravity.shortName())
+			qs.Set("Gravity", opts.Gravity.shortName())
 		}
 	}
 
 	if opts.Ext != nil {
-		qs.Set("ext", *opts.Ext)
+		qs.Set("Ext", *opts.Ext)
 	}
 
 	if len(qs) == 0 {
@@ -207,7 +234,7 @@ func (opts *imgOpts) variantName(path string) string {
 		buff.WriteString(filepath.Ext(path))
 	}
 
-	return cfs.ChangeExt(path, buff.String())
+	return cfs.DropExt(path) + buff.String()
 }
 
 func (opts *imgOpts) getDims() string {
@@ -224,6 +251,14 @@ func (opts *imgOpts) getDims() string {
 	default:
 		return fmt.Sprintf("%dx%d", *opts.W, *opts.H)
 	}
+}
+
+func (opts *imgOpts) getTempFilePattern() string {
+	if opts.Ext != nil {
+		return "acrylic-*" + *opts.Ext
+	}
+
+	return "acrylic-"
 }
 
 func (opts *imgOpts) scale(src, dst string) error {
@@ -249,11 +284,6 @@ func (opts *imgOpts) scale(src, dst string) error {
 	if opts.Q != nil {
 		args = append(args,
 			"-quality", fmt.Sprintf("%d", *opts.Q))
-	}
-
-	err := cfs.CreateParents(dst)
-	if err != nil {
-		return err
 	}
 
 	args = append(args, dst)
