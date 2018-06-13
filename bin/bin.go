@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thatguystone/acrylic/crawl"
 	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/acrylic/proxy"
 	"github.com/thatguystone/acrylic/watch"
@@ -107,7 +106,7 @@ func (b *bin) run() {
 					b.runCmd[0], time.Since(start))
 			} else {
 				b.logf("E: bin %s: rebuild failed:\n%v",
-					b.runCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
+					b.runCmd[0], stringc.Indent(b.err.Error(), internal.Indent))
 			}
 
 		case err := <-b.cmdErr:
@@ -116,7 +115,7 @@ func (b *bin) run() {
 			b.rwmtx.Unlock()
 
 			b.logf("E: bin %s: exited:\n%v",
-				b.runCmd[0], stringc.Indent(b.err.Error(), crawl.ErrIndent))
+				b.runCmd[0], stringc.Indent(b.err.Error(), internal.Indent))
 		}
 	}
 }

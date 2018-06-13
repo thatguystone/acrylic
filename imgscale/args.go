@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/goji/param"
-	"github.com/thatguystone/acrylic/crawl"
+	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/cog/cfs"
 	"github.com/thatguystone/cog/stringc"
 )
@@ -176,7 +176,7 @@ func (args *args) scale(src, dst string) error {
 	if err != nil {
 		err = fmt.Errorf("scale: %v\n%s",
 			err.Error(),
-			stringc.Indent(string(out), crawl.ErrIndent))
+			stringc.Indent(string(out), internal.Indent))
 	}
 
 	return err

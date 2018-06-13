@@ -5,11 +5,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/cog/stringc"
 )
-
-// ErrIndent is the indentation prefixed after newlines in errors
-const ErrIndent = "    "
 
 // A SiteError is returned when there were any issues crawling the handler
 type SiteError map[string][]error
@@ -30,11 +28,11 @@ func (err SiteError) Error() string {
 	b.WriteString("the following paths have errors:\n")
 
 	for _, path := range paths {
-		fmt.Fprintf(&b, ErrIndent+"%q:", path)
+		fmt.Fprintf(&b, internal.Indent+"%q:", path)
 
 		for _, err := range err[path] {
 			b.WriteString("\n")
-			b.WriteString(stringc.Indent(err.Error(), ErrIndent+ErrIndent))
+			b.WriteString(stringc.Indent(err.Error(), internal.Indent+internal.Indent))
 		}
 	}
 
@@ -50,7 +48,7 @@ type ResponseError struct {
 func (err ResponseError) Error() string {
 	var body string
 	if len(err.Body) > 0 {
-		body = "\n" + stringc.Indent(string(err.Body), ErrIndent)
+		body = "\n" + stringc.Indent(string(err.Body), internal.Indent)
 	}
 
 	return fmt.Sprintf("http error: %d%s", err.Status, body)

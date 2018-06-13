@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thatguystone/acrylic/crawl"
 	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/acrylic/watch"
 	"github.com/thatguystone/cog/stringc"
@@ -75,7 +74,7 @@ func (s *sass) run() {
 				s.entries, time.Since(start))
 		} else {
 			s.logf("E: sass %s: rebuild failed:\n%v",
-				s.entries, stringc.Indent(s.compileErr.Error(), crawl.ErrIndent))
+				s.entries, stringc.Indent(s.compileErr.Error(), internal.Indent))
 		}
 	}
 }
