@@ -3,7 +3,7 @@ package crawl
 import (
 	"testing"
 
-	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/internal/testutil"
 	"github.com/thatguystone/cog/check"
 )
 
@@ -47,7 +47,7 @@ func TestParentDirs(t *testing.T) {
 func TestFileEquals(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
+	tmp := testutil.NewTmpDir(c, map[string]string{
 		"0.txt": "abc",
 		"1.txt": "def",
 	})

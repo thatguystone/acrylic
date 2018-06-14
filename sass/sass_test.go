@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/internal/testutil"
 	"github.com/thatguystone/acrylic/watch"
 	"github.com/thatguystone/cog/check"
 )
@@ -24,7 +24,7 @@ func hit(h http.Handler) *httptest.ResponseRecorder {
 func TestSassBasic(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
+	tmp := testutil.NewTmpDir(c, map[string]string{
 		"all.scss":         `@import "sub"; @import "sub2";`,
 		"more/_sub.scss":   `.sub {color: #000;}`,
 		"more2/_sub2.scss": `.sub2 {color: #fff;}`,
@@ -49,7 +49,7 @@ func TestSassBasic(t *testing.T) {
 func TestSassChange(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
+	tmp := testutil.NewTmpDir(c, map[string]string{
 		"all.scss": `.all {color: #000;}`,
 	})
 	defer tmp.Remove()
@@ -77,7 +77,7 @@ func TestSassChange(t *testing.T) {
 func TestSassErrors(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
+	tmp := testutil.NewTmpDir(c, map[string]string{
 		"all.scss": `@import "`,
 	})
 	defer tmp.Remove()

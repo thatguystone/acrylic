@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/internal/testutil"
 	"github.com/thatguystone/cog/check"
 )
 
@@ -36,7 +36,7 @@ func (h stringHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func TestCrawlClean(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
+	tmp := testutil.NewTmpDir(c, map[string]string{
 		"/public/dir/dir/file": ``,
 		"/public/dir/file":     ``,
 		"/public/file":         ``,
@@ -69,21 +69,21 @@ func TestCrawlClean(t *testing.T) {
 func TestCrawlClaimCollision(t *testing.T) {
 	c := check.New(t)
 
-	gifPrint, err := fingerprint(bytes.NewReader(internal.GifBin))
+	gifPrint, err := fingerprint(bytes.NewReader(testutil.GifBin))
 	c.Must.Nil(err)
 
 	fpPath := "/img." + gifPrint + ".gif"
 
 	tests := []struct {
 		paths  []string
-		getErr func(tmp *internal.TmpDir) SiteError
+		getErr func(tmp *testutil.TmpDir) SiteError
 	}{
 		{
 			paths: []string{
 				"/img.gif",
 				fpPath,
 			},
-			getErr: func(tmp *internal.TmpDir) SiteError {
+			getErr: func(tmp *testutil.TmpDir) SiteError {
 				return SiteError{
 					fpPath: {
 						FileAlreadyClaimedError{
@@ -99,7 +99,7 @@ func TestCrawlClaimCollision(t *testing.T) {
 				fpPath,
 				"/img.gif",
 			},
-			getErr: func(tmp *internal.TmpDir) SiteError {
+			getErr: func(tmp *testutil.TmpDir) SiteError {
 				return SiteError{
 					"/img.gif": {
 						FileAlreadyClaimedError{
@@ -116,18 +116,18 @@ func TestCrawlClaimCollision(t *testing.T) {
 		test := test
 
 		c.Run(test.paths[0], func(c *check.C) {
-			tmp := internal.NewTmpDir(c, nil)
+			tmp := testutil.NewTmpDir(c, nil)
 			defer tmp.Remove()
 
 			cr := newCrawler(
 				mux(map[string]http.Handler{
 					"/img.gif": stringHandler{
-						contType: internal.GifType,
-						body:     string(internal.GifBin),
+						contType: testutil.GifType,
+						body:     string(testutil.GifBin),
 					},
 					fpPath: stringHandler{
-						contType: internal.GifType,
-						body:     string(internal.GifBin),
+						contType: testutil.GifType,
+						body:     string(testutil.GifBin),
 					},
 				}),
 				Output(tmp.Path("/public")),
@@ -153,14 +153,14 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 
 	tests := []struct {
 		paths  []string
-		getErr func(tmp *internal.TmpDir) SiteError
+		getErr func(tmp *testutil.TmpDir) SiteError
 	}{
 		{
 			paths: []string{
 				"/index",
 				"/index/",
 			},
-			getErr: func(tmp *internal.TmpDir) SiteError {
+			getErr: func(tmp *testutil.TmpDir) SiteError {
 				path := tmp.Path(filepath.Join("public", "index"))
 				return SiteError{
 					"/index/": {
@@ -174,7 +174,7 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index/",
 				"/index",
 			},
-			getErr: func(tmp *internal.TmpDir) SiteError {
+			getErr: func(tmp *testutil.TmpDir) SiteError {
 				path := tmp.Path(filepath.Join("public", "index"))
 				return SiteError{
 					"/index": {
@@ -188,7 +188,7 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index",
 				"/index/nested/page/",
 			},
-			getErr: func(tmp *internal.TmpDir) SiteError {
+			getErr: func(tmp *testutil.TmpDir) SiteError {
 				path := tmp.Path(filepath.Join("public", "index"))
 				return SiteError{
 					"/index/nested/page/": {
@@ -202,7 +202,7 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 				"/index/nested/page/",
 				"/index",
 			},
-			getErr: func(tmp *internal.TmpDir) SiteError {
+			getErr: func(tmp *testutil.TmpDir) SiteError {
 				path := tmp.Path(filepath.Join("public", "index"))
 				return SiteError{
 					"/index": {
@@ -217,7 +217,7 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 		test := test
 
 		c.Run(test.paths[0], func(c *check.C) {
-			tmp := internal.NewTmpDir(c, nil)
+			tmp := testutil.NewTmpDir(c, nil)
 			defer tmp.Remove()
 
 			cr := newCrawler(

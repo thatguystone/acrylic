@@ -12,14 +12,14 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/internal/testutil"
 	"github.com/thatguystone/cog/check"
 )
 
 func TestPageAddIndexSanity(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, nil)
+	tmp := testutil.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
 	_, err := Crawl(
@@ -39,7 +39,7 @@ func TestPageAddIndexSanity(t *testing.T) {
 func TestPageFingerprint(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, nil)
+	tmp := testutil.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
 	site, err := Crawl(
@@ -71,7 +71,7 @@ func TestPageFingerprint(t *testing.T) {
 func TestPageAlias(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, nil)
+	tmp := testutil.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
 	site, err := Crawl(
@@ -105,7 +105,7 @@ func TestPageAlias(t *testing.T) {
 func TestPageOverwriteExistingOutputs(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
+	tmp := testutil.NewTmpDir(c, map[string]string{
 		"/public/index.html/is/a/dir/index.html": `not index`,
 		"/public/about.html":                     `not about`,
 		"/public/img.gif":                        `not a gif`,
@@ -125,8 +125,8 @@ func TestPageOverwriteExistingOutputs(t *testing.T) {
 				body:     `about`,
 			},
 			"/img.gif": stringHandler{
-				contType: internal.GifType,
-				body:     string(internal.GifBin),
+				contType: testutil.GifType,
+				body:     string(testutil.GifBin),
 			},
 		}),
 		Output(tmp.Path("/public")))
@@ -134,13 +134,13 @@ func TestPageOverwriteExistingOutputs(t *testing.T) {
 	tmp.DumpTree()
 
 	c.Equal(tmp.ReadFile("/public/about.html"), `about`)
-	c.Equal(tmp.ReadFile("/public/img.gif"), string(internal.GifBin))
+	c.Equal(tmp.ReadFile("/public/img.gif"), string(testutil.GifBin))
 }
 
 func TestPageServeFileSymlinks(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
+	tmp := testutil.NewTmpDir(c, map[string]string{
 		"/stuff":                     `stuff`,
 		"/stuff.txt":                 `stuff`,
 		"/stuff.css":                 ` body { } `,
@@ -223,7 +223,7 @@ var variantHandler = mux(map[string]http.Handler{
 func TestPageVariantBasic(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, nil)
+	tmp := testutil.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
 	site, err := Crawl(variantHandler, Output(tmp.Path("/public")))
@@ -248,7 +248,7 @@ func TestPageVariantBasic(t *testing.T) {
 func TestPageVariantFingerprint(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, nil)
+	tmp := testutil.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
 	site, err := Crawl(
@@ -283,7 +283,7 @@ func TestPageVariantFingerprint(t *testing.T) {
 func TestPageURLFragments(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, nil)
+	tmp := testutil.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
 	links := []string{
@@ -328,7 +328,7 @@ func TestPageURLFragments(t *testing.T) {
 func TestPageRedirectBasic(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, nil)
+	tmp := testutil.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
 	site, err := Crawl(
@@ -362,7 +362,7 @@ func TestPageRedirectBasic(t *testing.T) {
 func TestPageBodyChanged(t *testing.T) {
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
+	tmp := testutil.NewTmpDir(c, map[string]string{
 		"/public/index.html":        `index`,
 		"/public/page/1/index.html": `page 0`,
 		"/public/page/2/index.html": `totally different`,
@@ -456,7 +456,7 @@ func TestPageErrors(t *testing.T) {
 			name: "ContentTypeMismatch",
 			h: mux(map[string]http.Handler{
 				"/page.html": stringHandler{
-					contType: internal.GifType,
+					contType: testutil.GifType,
 				},
 			}),
 			opts: []Option{
@@ -467,7 +467,7 @@ func TestPageErrors(t *testing.T) {
 					MimeTypeMismatchError{
 						Ext:          ".html",
 						Guess:        htmlType,
-						FromResponse: internal.GifType,
+						FromResponse: testutil.GifType,
 					},
 				},
 			},
@@ -476,7 +476,7 @@ func TestPageErrors(t *testing.T) {
 			name: "UnknownContentTypeExtension",
 			h: mux(map[string]http.Handler{
 				"/page.not-an-ext": stringHandler{
-					contType: internal.GifType,
+					contType: testutil.GifType,
 				},
 			}),
 			opts: []Option{
@@ -487,7 +487,7 @@ func TestPageErrors(t *testing.T) {
 					MimeTypeMismatchError{
 						Ext:          ".not-an-ext",
 						Guess:        DefaultType,
-						FromResponse: internal.GifType,
+						FromResponse: testutil.GifType,
 					},
 				},
 			},
@@ -632,7 +632,7 @@ func TestPageErrors(t *testing.T) {
 		test := test
 
 		c.Run(test.name, func(c *check.C) {
-			tmp := internal.NewTmpDir(c, nil)
+			tmp := testutil.NewTmpDir(c, nil)
 			defer tmp.Remove()
 
 			var opts []Option

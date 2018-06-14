@@ -1,4 +1,4 @@
-package internal
+package testutil
 
 import (
 	"io/ioutil"

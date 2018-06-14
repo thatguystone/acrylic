@@ -1,4 +1,4 @@
-package internal
+package testutil
 
 // GifType is a gif's mime type
 const GifType = "image/gif"

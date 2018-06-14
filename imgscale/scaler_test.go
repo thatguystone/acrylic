@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/internal/testutil"
 	"github.com/thatguystone/cog/check"
 )
 
@@ -22,8 +22,8 @@ func TestImageScalerBasic(t *testing.T) {
 
 	c := check.New(t)
 
-	tmp := internal.NewTmpDir(c, map[string]string{
-		"img.gif": string(internal.GifBin),
+	tmp := testutil.NewTmpDir(c, map[string]string{
+		"img.gif": string(testutil.GifBin),
 	})
 	defer tmp.Remove()
 
@@ -54,8 +54,8 @@ func TestImageScalerBasic(t *testing.T) {
 
 // 	c := check.New(t)
 
-// 	tmp := internal.NewTmpDir(c, map[string]string{
-// 		"img.gif": string(internal.GifBin),
+// 	tmp := testutil.NewTmpDir(c, map[string]string{
+// 		"img.gif": string(testutil.GifBin),
 // 	})
 // 	defer tmp.Remove()
 
