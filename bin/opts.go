@@ -1,5 +1,7 @@
 package bin
 
+import "github.com/thatguystone/acrylic/watch"
+
 // An Option is passed to New() to change default options
 type Option interface {
 	applyTo(b *bin)
@@ -16,16 +18,23 @@ func BuildCmd(cmd ...string) Option {
 	})
 }
 
-// Exts set the file extensions to watch for changes
-func Exts(exts ...string) Option {
-	return option(func(b *bin) {
-		b.exts = exts
-	})
-}
-
 // LogTo sets the log function
 func LogTo(cb func(string, ...interface{})) Option {
 	return option(func(b *bin) {
 		b.logf = cb
+	})
+}
+
+// Watch attaches the bin instance to the given watch
+func Watch(w *watch.Watch) Option {
+	return option(func(b *bin) {
+		w.Notify(b)
+	})
+}
+
+// Exts sets the file extensions to watch for changes
+func Exts(exts ...string) Option {
+	return option(func(b *bin) {
+		b.exts = exts
 	})
 }

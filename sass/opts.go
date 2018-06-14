@@ -32,8 +32,8 @@ func LogTo(cb func(string, ...interface{})) Option {
 	})
 }
 
-// Watcher attaches the sass instance to the given watcher
-func Watcher(w *watch.Watch) Option {
+// Watch attaches the sass instance to the given watch
+func Watch(w *watch.Watch) Option {
 	return option(func(s *sass) {
 		w.Notify(s)
 	})

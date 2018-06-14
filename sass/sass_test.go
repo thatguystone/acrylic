@@ -60,7 +60,7 @@ func TestSassChange(t *testing.T) {
 	sass := New(
 		tmp.Path("all.scss"),
 		LogTo(c.Logf),
-		Watcher(w))
+		Watch(w))
 
 	rr := hit(sass)
 	c.Equal(rr.Code, http.StatusOK)
