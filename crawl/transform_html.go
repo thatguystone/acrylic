@@ -68,5 +68,5 @@ func transformHTML(lr LinkResolver, b []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return mini.Bytes(htmlType, buff.Bytes())
+	return Minify.Bytes(htmlType, buff.Bytes())
 }

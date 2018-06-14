@@ -26,7 +26,7 @@ func transformCSS(lr LinkResolver, b []byte) ([]byte, error) {
 
 	// Minify last so that any quotes added from url() replacements will be
 	// removed if possible
-	return mini.Bytes(cssType, b)
+	return Minify.Bytes(cssType, b)
 }
 
 func newCSSTransform(lr LinkResolver, css string) (tf cssTransform) {

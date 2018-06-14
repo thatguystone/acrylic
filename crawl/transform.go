@@ -13,7 +13,8 @@ import (
 type Transform func(lr LinkResolver, b []byte) ([]byte, error)
 
 var (
-	mini = minify.New()
+	// Minify is the minifier the crawler uses
+	Minify = minify.New()
 
 	defaultTransforms = map[string][]Transform{
 		htmlType: {transformHTML},
@@ -24,17 +25,17 @@ var (
 )
 
 func init() {
-	mini.AddFunc(htmlType, html.Minify)
-	mini.AddFunc(cssType, css.Minify)
-	mini.AddFunc(jsType, js.Minify)
-	mini.AddFunc(jsonType, json.Minify)
-	mini.AddFunc(svgType, svg.Minify)
+	Minify.AddFunc(htmlType, html.Minify)
+	Minify.AddFunc(cssType, css.Minify)
+	Minify.AddFunc(jsType, js.Minify)
+	Minify.AddFunc(jsonType, json.Minify)
+	Minify.AddFunc(svgType, svg.Minify)
 }
 
 func transformJSON(lr LinkResolver, b []byte) ([]byte, error) {
-	return mini.Bytes(jsonType, b)
+	return Minify.Bytes(jsonType, b)
 }
 
 func transformSVG(lr LinkResolver, b []byte) ([]byte, error) {
-	return mini.Bytes(svgType, b)
+	return Minify.Bytes(svgType, b)
 }
