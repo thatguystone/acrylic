@@ -129,13 +129,13 @@ func (b *bin) term() {
 	b.cmd.Process.Signal(os.Interrupt)
 
 	for {
+		if b.cmd.ProcessState != nil {
+			b.cmd = nil
+			return
+		}
+
 		select {
 		case <-b.cmdErr:
-			if b.cmd.ProcessState != nil {
-				b.cmd = nil
-				return
-			}
-
 		case <-time.After(100 * time.Millisecond):
 			b.cmd.Process.Kill()
 		}
