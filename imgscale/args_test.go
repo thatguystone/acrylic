@@ -10,71 +10,66 @@ func TestArgsStrings(t *testing.T) {
 	c := check.New(t)
 
 	newInt := func(i int) *int { return &i }
-	newStr := func(s string) *string { return &s }
 
 	tests := []struct {
-		args    args
-		query   string
-		variant string
+		args       args
+		query      string
+		nameSuffix string
 	}{
+		{},
 		{
-			variant: "img.jpg",
+			args: args{
+				W:   newInt(100),
+				Ext: ".jpg",
+			},
+			nameSuffix: "-100x.jpg",
 		},
 		{
 			args: args{
-				W: newInt(100),
+				H:   newInt(100),
+				Ext: ".jpg",
 			},
-			query:   "?W=100",
-			variant: "img-100x.jpg",
+			nameSuffix: "-x100.jpg",
 		},
 		{
 			args: args{
-				H: newInt(100),
+				W:   newInt(100),
+				H:   newInt(100),
+				Ext: ".jpg",
 			},
-			query:   "?H=100",
-			variant: "img-x100.jpg",
+			nameSuffix: "-100x100.jpg",
 		},
 		{
 			args: args{
-				W: newInt(100),
-				H: newInt(100),
+				Q:   newInt(50),
+				Ext: ".jpg",
 			},
-			query:   "?H=100&W=100",
-			variant: "img-100x100.jpg",
-		},
-		{
-			args: args{
-				Q: newInt(50),
-			},
-			query:   "?Q=50",
-			variant: "img-q50.jpg",
+			nameSuffix: "-q50.jpg",
 		},
 		{
 			args: args{
 				Crop: true,
+				Ext:  ".jpg",
 			},
-			query:   "?Crop=1",
-			variant: "img-c.jpg",
+			nameSuffix: "-c.jpg",
 		},
 		{
 			args: args{
 				Crop:    true,
 				Gravity: northWest,
+				Ext:     ".jpg",
 			},
-			query:   "?Crop=1&Gravity=nw",
-			variant: "img-cnw.jpg",
+			nameSuffix: "-cnw.jpg",
 		},
 		{
 			args: args{
-				Ext: newStr(".png"),
+				Ext: ".png",
 			},
-			query:   "?Ext=.png",
-			variant: "img.png",
+			nameSuffix: ".png",
 		},
 	}
 
 	for _, test := range tests {
-		c.Equal(test.args.query(), test.query)
-		c.Equal(test.args.variantName("img.jpg"), test.variant)
+		c.Equal(test.args.nameSuffix(), test.nameSuffix)
 	}
 }

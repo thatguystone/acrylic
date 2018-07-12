@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
-	"path/filepath"
-	"strconv"
+	"path"
 	"strings"
 
 	"github.com/goji/param"
 	"github.com/thatguystone/acrylic/internal"
-	"github.com/thatguystone/cog/cfs"
 	"github.com/thatguystone/cog/stringc"
 )
 
@@ -20,13 +18,16 @@ type args struct {
 	Q       *int // Image quality
 	Crop    bool // How to crop the image
 	Gravity cropGravity
-	Ext     *string // Convert to this format
+	Ext     string // Convert to this format
 }
 
-func (args *args) parse(qs url.Values) error {
-	err := param.Parse(qs, args)
+func newArgs(u *url.URL) (args args, err error) {
+	// Default to current extension
+	args.Ext = path.Ext(u.Path)
+
+	err = param.Parse(u.Query(), &args)
 	if err != nil {
-		return err
+		return
 	}
 
 	if args.D != 0 {
@@ -38,7 +39,7 @@ func (args *args) parse(qs url.Values) error {
 			*args.H *= args.D
 		}
 
-		// Only used to simplify usage externally
+		// Only used to simplify scaling externally
 		args.D = 0
 	}
 
@@ -50,48 +51,14 @@ func (args *args) parse(qs url.Values) error {
 		args.Gravity = 0
 	}
 
-	if args.Ext != nil && !strings.HasPrefix(*args.Ext, ".") {
-		*args.Ext = "." + *args.Ext
+	if !strings.HasPrefix(args.Ext, ".") {
+		args.Ext = "." + args.Ext
 	}
 
-	return nil
+	return
 }
 
-func (args *args) query() string {
-	qs := make(url.Values)
-
-	if args.W != nil {
-		qs.Set("W", strconv.Itoa(*args.W))
-	}
-
-	if args.H != nil {
-		qs.Set("H", strconv.Itoa(*args.H))
-	}
-
-	if args.Q != nil {
-		qs.Set("Q", strconv.Itoa(*args.Q))
-	}
-
-	if args.Crop {
-		qs.Set("Crop", "1")
-
-		if args.Gravity != center {
-			qs.Set("Gravity", args.Gravity.shortName())
-		}
-	}
-
-	if args.Ext != nil {
-		qs.Set("Ext", *args.Ext)
-	}
-
-	if len(qs) == 0 {
-		return ""
-	}
-
-	return "?" + qs.Encode()
-}
-
-func (args *args) variantName(path string) string {
+func (args *args) nameSuffix() string {
 	var buff strings.Builder
 
 	dims := args.getDims()
@@ -112,9 +79,9 @@ func (args *args) variantName(path string) string {
 		}
 	}
 
-	buff.WriteString(args.getExt(path))
+	buff.WriteString(args.Ext)
 
-	return cfs.DropExt(path) + buff.String()
+	return buff.String()
 }
 
 func (args *args) getDims() string {
@@ -133,23 +100,11 @@ func (args *args) getDims() string {
 	}
 }
 
-func (args *args) getExt(path string) string {
-	if args.Ext != nil {
-		return *args.Ext
-	}
-
-	return filepath.Ext(path)
-}
-
-func (args *args) getTempFilePattern(path string) string {
-	return "acrylic-*" + args.getExt(path)
-}
-
-func (args *args) scale(src, dst string) error {
+func (args *args) scale(srcPath, dstPath string) error {
 	cmdArgs := []string{
 		"convert",
 		"-strip", // Scrub the image by default
-		src,
+		srcPath,
 	}
 
 	dims := args.getDims()
@@ -170,7 +125,7 @@ func (args *args) scale(src, dst string) error {
 			"-quality", fmt.Sprintf("%d", *args.Q))
 	}
 
-	cmdArgs = append(cmdArgs, dst)
+	cmdArgs = append(cmdArgs, dstPath)
 
 	out, err := exec.Command("gm", cmdArgs...).CombinedOutput()
 	if err != nil {
