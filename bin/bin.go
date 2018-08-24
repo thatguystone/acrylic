@@ -26,11 +26,11 @@ type bin struct {
 	logf     func(string, ...interface{})
 	changed  chan struct{}
 
-	rwmtx  sync.RWMutex
-	cmd    *exec.Cmd
+	proc   *os.Process
 	err    error
 	cmdErr chan error
 	proxy  *proxy.Proxy
+	reqMtx sync.RWMutex
 }
 
 // New creates a new binary runner/builder/proxy
@@ -46,6 +46,10 @@ func New(proxyTarget string, runCmd []string, opts ...Option) http.Handler {
 		opt.applyTo(b)
 	}
 
+	// Lock before listening to prevent anyone from getting a proxy error before
+	// the first build has even started
+	b.reqMtx.Lock()
+
 	proxy, err := proxy.New(proxyTarget,
 		proxy.ErrorLog(func(s ...interface{}) {
 			b.logf("%s", fmt.Sprint(s...))
@@ -55,9 +59,6 @@ func New(proxyTarget string, runCmd []string, opts ...Option) http.Handler {
 	}
 
 	b.proxy = proxy
-
-	// Lock, pending first build
-	b.rwmtx.Lock()
 	go b.run()
 
 	b.changed <- struct{}{}
@@ -87,11 +88,12 @@ func (b *bin) run() {
 	for {
 		select {
 		case <-b.changed:
-			// Term before locking: long-running requests can block this otherwise
+			// Term before locking: long-running requests can block rebuilding
+			// otherwise
 			b.term()
 
 			if !first {
-				b.rwmtx.Lock()
+				b.reqMtx.Lock()
 			}
 			first = false
 
@@ -99,7 +101,7 @@ func (b *bin) run() {
 			b.logf("I: bin %s: rebuilding...\n", b.runCmd[0])
 			b.err = b.rebuild()
 
-			b.rwmtx.Unlock()
+			b.reqMtx.Unlock()
 
 			if b.err == nil {
 				b.logf("I: bin %s: rebuild took %s\n",
@@ -110,9 +112,11 @@ func (b *bin) run() {
 			}
 
 		case err := <-b.cmdErr:
-			b.rwmtx.Lock()
+			b.proc = nil
+
+			b.reqMtx.Lock()
 			b.err = err
-			b.rwmtx.Unlock()
+			b.reqMtx.Unlock()
 
 			b.logf("E: bin %s: exited:\n%v",
 				b.runCmd[0], stringc.Indent(b.err.Error(), internal.Indent))
@@ -121,23 +125,21 @@ func (b *bin) run() {
 }
 
 func (b *bin) term() {
-	if b.cmd == nil {
+	if b.proc == nil {
 		return
 	}
 
 	// Try to be nice
-	b.cmd.Process.Signal(os.Interrupt)
+	b.proc.Signal(os.Interrupt)
 
 	for {
-		if b.cmd.ProcessState != nil {
-			b.cmd = nil
-			return
-		}
-
 		select {
 		case <-b.cmdErr:
+			b.proc = nil
+			return
+
 		case <-time.After(100 * time.Millisecond):
-			b.cmd.Process.Kill()
+			b.proc.Kill()
 		}
 	}
 }
@@ -151,32 +153,37 @@ func (b *bin) rebuild() error {
 		}
 	}
 
-	b.cmd = exec.Command(b.runCmd[0], b.runCmd[1:]...)
-	b.cmd.Stdout = os.Stdout
-	b.cmd.Stderr = os.Stderr
+	cmd := exec.Command(b.runCmd[0], b.runCmd[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Start()
+	if err != nil {
+		return err
+	}
+
 	go func() {
-		err := b.cmd.Run()
+		err := cmd.Wait()
 		b.cmdErr <- fmt.Errorf("exited unexpectedly: %v", err)
 	}()
 
-	ready := b.proxy.PollReady(5 * time.Second)
-	for {
-		select {
-		case err := <-b.cmdErr:
-			return err
-
-		case err := <-ready:
-			if err != nil {
-				b.term()
-			}
-			return err
+	select {
+	case err := <-b.proxy.PollReady(5 * time.Second):
+		if err == nil {
+			b.proc = cmd.Process
+		} else {
+			b.term()
 		}
+		return err
+
+	case err := <-b.cmdErr:
+		return err
 	}
 }
 
 func (b *bin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	b.rwmtx.RLock()
-	defer b.rwmtx.RUnlock()
+	b.reqMtx.RLock()
+	defer b.reqMtx.RUnlock()
 
 	if b.err != nil {
 		internal.HTTPError(w, b.err.Error(), http.StatusInternalServerError)
