@@ -1,6 +1,9 @@
 package bin
 
-import "github.com/thatguystone/acrylic/watch"
+import (
+	"github.com/thatguystone/acrylic"
+	"github.com/thatguystone/acrylic/watch"
+)
 
 // An Option is passed to New() to change default options
 type Option interface {
@@ -19,9 +22,9 @@ func BuildCmd(cmd ...string) Option {
 }
 
 // LogTo sets the log function
-func LogTo(cb func(string, ...interface{})) Option {
+func LogTo(log acrylic.Logger) Option {
 	return option(func(b *bin) {
-		b.logf = cb
+		b.log = log
 	})
 }
 

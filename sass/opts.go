@@ -1,6 +1,9 @@
 package sass
 
-import "github.com/thatguystone/acrylic/watch"
+import (
+	"github.com/thatguystone/acrylic"
+	"github.com/thatguystone/acrylic/watch"
+)
 
 // An Option is passed to New() to change default options
 type Option interface {
@@ -26,9 +29,9 @@ func IncludePaths(paths ...string) Option {
 }
 
 // LogTo sets the log function
-func LogTo(cb func(string, ...interface{})) Option {
+func LogTo(log acrylic.Logger) Option {
 	return option(func(s *sass) {
-		s.logf = cb
+		s.log = log
 	})
 }
 

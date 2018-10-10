@@ -3,22 +3,23 @@ package sass
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/thatguystone/acrylic"
 	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/acrylic/watch"
-	"github.com/thatguystone/cog/stringc"
-	"github.com/wellington/go-libsass"
+	libsass "github.com/wellington/go-libsass"
 )
 
 type sass struct {
 	entries      []string
 	includePaths []string
-	logf         func(string, ...interface{})
+	log          acrylic.Logger
 	changed      chan struct{}
 
 	rwmtx      sync.RWMutex
@@ -31,7 +32,7 @@ type sass struct {
 func New(entry string, opts ...Option) http.Handler {
 	s := &sass{
 		entries: []string{entry},
-		logf:    log.Printf,
+		log:     internal.NewLogger(fmt.Sprintf("sass{%s}", entry), log.Printf),
 		changed: make(chan struct{}, 1),
 	}
 
@@ -64,17 +65,15 @@ func (s *sass) run() {
 		first = false
 
 		start := time.Now()
-		s.logf("I: sass %s: rebuilding...\n", s.entries)
+		s.log.Log("rebuilding...")
 		s.compileErr = s.rebuild()
 
 		s.rwmtx.Unlock()
 
 		if s.compileErr == nil {
-			s.logf("I: sass %s: rebuild took %s\n",
-				s.entries, time.Since(start))
+			s.log.Log(fmt.Sprintf("rebuild took %s", time.Since(start)))
 		} else {
-			s.logf("E: sass %s: rebuild failed:\n%v",
-				s.entries, stringc.Indent(s.compileErr.Error(), internal.Indent))
+			s.log.Error(s.compileErr, "rebuild failed")
 		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/acrylic/internal/testutil"
 	"github.com/thatguystone/acrylic/watch"
 	"github.com/thatguystone/cog/check"
@@ -36,7 +37,7 @@ func TestSassBasic(t *testing.T) {
 		IncludePaths(
 			tmp.Path("more"),
 			tmp.Path("more2")),
-		LogTo(c.Logf))
+		LogTo(internal.NewLogger("test", c.Logf)))
 
 	rr := hit(sass)
 	c.Equal(rr.Code, http.StatusOK)
@@ -59,7 +60,7 @@ func TestSassChange(t *testing.T) {
 
 	sass := New(
 		tmp.Path("all.scss"),
-		LogTo(c.Logf),
+		LogTo(internal.NewLogger("test", c.Logf)),
 		Watch(w))
 
 	rr := hit(sass)
@@ -84,7 +85,7 @@ func TestSassErrors(t *testing.T) {
 
 	sass := New(
 		tmp.Path("all.scss"),
-		LogTo(c.Logf))
+		LogTo(internal.NewLogger("test", c.Logf)))
 
 	rr := hit(sass)
 	c.Equal(rr.Code, http.StatusInternalServerError)

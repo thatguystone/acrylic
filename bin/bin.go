@@ -13,17 +13,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thatguystone/acrylic"
 	"github.com/thatguystone/acrylic/internal"
 	"github.com/thatguystone/acrylic/proxy"
 	"github.com/thatguystone/acrylic/watch"
-	"github.com/thatguystone/cog/stringc"
 )
 
 type bin struct {
 	buildCmd []string
 	runCmd   []string
 	exts     []string
-	logf     func(string, ...interface{})
+	log      acrylic.Logger
 	changed  chan struct{}
 
 	proc   *os.Process
@@ -37,7 +37,7 @@ type bin struct {
 func New(proxyTarget string, runCmd []string, opts ...Option) http.Handler {
 	b := &bin{
 		runCmd:  runCmd,
-		logf:    log.Printf,
+		log:     internal.NewLogger(fmt.Sprintf("bin{%s}", runCmd[0]), log.Printf),
 		changed: make(chan struct{}, 1),
 		cmdErr:  make(chan error),
 	}
@@ -51,8 +51,8 @@ func New(proxyTarget string, runCmd []string, opts ...Option) http.Handler {
 	b.reqMtx.Lock()
 
 	proxy, err := proxy.New(proxyTarget,
-		proxy.ErrorLog(func(s ...interface{}) {
-			b.logf("%s", fmt.Sprint(s...))
+		proxy.ErrorLog(func(msg string) {
+			b.log.Error(nil, fmt.Sprintf("proxy: %s", msg))
 		}))
 	if err != nil {
 		panic(err)
@@ -98,17 +98,15 @@ func (b *bin) run() {
 			first = false
 
 			start := time.Now()
-			b.logf("I: bin %s: rebuilding...\n", b.runCmd[0])
+			b.log.Log("rebuilding...")
 			b.err = b.rebuild()
 
 			b.reqMtx.Unlock()
 
 			if b.err == nil {
-				b.logf("I: bin %s: rebuild took %s\n",
-					b.runCmd[0], time.Since(start))
+				b.log.Log(fmt.Sprintf("rebuild took %s", time.Since(start)))
 			} else {
-				b.logf("E: bin %s: rebuild failed:\n%v",
-					b.runCmd[0], stringc.Indent(b.err.Error(), internal.Indent))
+				b.log.Error(b.err, "rebuild failed")
 			}
 
 		case err := <-b.cmdErr:
@@ -118,8 +116,7 @@ func (b *bin) run() {
 			b.err = err
 			b.reqMtx.Unlock()
 
-			b.logf("E: bin %s: exited:\n%v",
-				b.runCmd[0], stringc.Indent(b.err.Error(), internal.Indent))
+			b.log.Error(err, "command exited")
 		}
 	}
 }

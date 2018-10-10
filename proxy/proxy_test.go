@@ -9,6 +9,12 @@ import (
 	"github.com/thatguystone/cog/check"
 )
 
+func testLog(tb testing.TB) Option {
+	return ErrorLog(func(msg string) {
+		tb.Log(msg)
+	})
+}
+
 func TestProxyBasic(t *testing.T) {
 	c := check.New(t)
 
@@ -18,7 +24,7 @@ func TestProxyBasic(t *testing.T) {
 
 	p, err := New(
 		"http://"+l.Addr().String(),
-		ErrorLog(c.Log))
+		testLog(c))
 	c.Must.Nil(err)
 
 	err = <-p.PollReady(1 * time.Millisecond)
@@ -30,7 +36,7 @@ func TestProxyNotReady(t *testing.T) {
 
 	p, err := New(
 		"http://127.0.0.1:999999",
-		ErrorLog(c.Log))
+		testLog(c))
 	c.Must.Nil(err)
 
 	err = <-p.PollReady(1 * time.Millisecond)

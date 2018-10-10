@@ -92,7 +92,7 @@ func (isc *imgscale) scale(
 		filepath.Dir(dstPath),
 		"acrylic-*"+filepath.Ext(dstPath))
 	if err != nil {
-		return err
+		return
 	}
 
 	tmpPath := tmpF.Name()
