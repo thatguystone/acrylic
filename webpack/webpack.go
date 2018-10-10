@@ -26,9 +26,8 @@ type webpack struct {
 // New creates a new webpack-dev-server runner and proxy
 func New(opts ...Option) http.Handler {
 	wp := &webpack{
-		bin:     "./node_modules/.bin/webpack-dev-server",
-		port:    9779,
-		nodeEnv: "development",
+		bin:  "./node_modules/.bin/webpack-dev-server",
+		port: 9779,
 	}
 
 	for _, opt := range opts {
@@ -54,12 +53,6 @@ func (wp *webpack) run() {
 	cmd := exec.Command(wp.bin, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
-	if wp.nodeEnv != "" {
-		cmd.Env = append(
-			os.Environ(),
-			fmt.Sprintf("NODE_ENV=%s", wp.nodeEnv))
-	}
 
 	err := cmd.Run()
 	wp.err.Store(fmt.Errorf("unexpected cmd exit: %v", err))

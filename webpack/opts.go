@@ -29,10 +29,3 @@ func Args(args ...string) Option {
 		wp.args = args
 	})
 }
-
-// NodeEnv sets the NODE_ENV passed down. If "", the env isn't modified.
-func NodeEnv(env string) Option {
-	return option(func(wp *webpack) {
-		wp.nodeEnv = env
-	})
-}
