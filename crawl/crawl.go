@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/thatguystone/acrylic/internal"
 )
 
 // Crawl performs a crawl with the given config
@@ -24,7 +26,9 @@ func Crawl(h http.Handler, opts ...Option) (Site, error) {
 		return Site{}, cr.err
 	}
 
-	err := cr.clean()
+	// Only cleanup if the run succeeded. It would suck to flush the cache
+	// because of a user mistake.
+	err := cr.finish()
 	if err != nil {
 		return Site{}, err
 	}
@@ -33,38 +37,45 @@ func Crawl(h http.Handler, opts ...Option) (Site, error) {
 }
 
 type crawler struct {
-	handler     http.Handler
-	entries     []*url.URL
-	output      string
-	transforms  map[string][]Transform
-	fingerprint func(u *url.URL, mediaType string) bool
-	cleanDirs   []string
-	wg          sync.WaitGroup
+	handler      http.Handler
+	entries      []*url.URL
+	output       string
+	transforms   map[string][]Transform
+	fingerprints fingerprints
+	cleanDirs    []string
+	wg           sync.WaitGroup
 
 	mtx  sync.Mutex
 	err  SiteError
 	site Site
-	used map[string]struct{} // Absolute paths to all used files and directories
+	used usedFiles
 }
+
+// Absolute paths to all used files and directories
+type usedFiles map[string]struct{}
 
 func newCrawler(h http.Handler, opts ...Option) *crawler {
 	cr := &crawler{
-		handler:     h,
-		output:      "./public",
-		transforms:  make(map[string][]Transform),
-		fingerprint: func(*url.URL, string) bool { return false },
-		err:         make(SiteError),
+		handler:    h,
+		output:     "./public",
+		transforms: make(map[string][]Transform),
+		fingerprints: fingerprints{
+			cacheFile: filepath.Join(internal.DefaultCacheDir, "fingerprints.json.gz"),
+		},
+		err: make(SiteError),
 		site: Site{
 			urls:   make(map[string]*Page),
 			pages:  make(map[string]*Page),
 			claims: make(map[string]*Page),
 		},
-		used: make(map[string]struct{}),
+		used: make(usedFiles),
 	}
 
 	for _, opt := range opts {
 		opt.applyTo(cr)
 	}
+
+	cr.fingerprints.loadCache()
 
 	if len(cr.entries) == 0 {
 		cr.entries = []*url.URL{
@@ -82,7 +93,7 @@ func newCrawler(h http.Handler, opts ...Option) *crawler {
 }
 
 func (cr *crawler) shouldFingerprint(u url.URL, mediaType string) bool {
-	return cr.fingerprint(&u, mediaType)
+	return cr.fingerprints.should(&u, mediaType)
 }
 
 func (cr *crawler) addTransforms(mediaType string, ts ...Transform) {
@@ -178,10 +189,14 @@ func (cr *crawler) claimFile(pg *Page, file string) error {
 	return nil
 }
 
-func (cr *crawler) clean() error {
+func (cr *crawler) finish() error {
 	dirs := []string{absPath(cr.output)}
 	for _, dir := range cr.cleanDirs {
 		dirs = append(dirs, absPath(dir))
+	}
+
+	if cr.fingerprints.cacheEnabled() {
+		cr.setUsed(cr.fingerprints.cacheFile)
 	}
 
 	for _, dir := range dirs {
@@ -195,7 +210,7 @@ func (cr *crawler) clean() error {
 		}
 	}
 
-	return nil
+	return cr.fingerprints.saveCache(cr.used)
 }
 
 func (cr *crawler) cleanDir(dir string) error {

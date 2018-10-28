@@ -77,5 +77,5 @@ func filePrepWrite(path string) error {
 		return err
 	}
 
-	return os.MkdirAll(filepath.Dir(path), 0750)
+	return os.MkdirAll(filepath.Dir(path), 0777)
 }

@@ -29,7 +29,8 @@ func TestPageAddIndexSanity(t *testing.T) {
 				body:     `index`,
 			},
 		}),
-		Output(tmp.Path("/public")))
+		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")))
 	c.Nil(err)
 	tmp.DumpTree()
 
@@ -54,6 +55,7 @@ func TestPageFingerprint(t *testing.T) {
 			},
 		}),
 		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")),
 		Fingerprint(func(u *url.URL, mediaType string) bool {
 			return filepath.Ext(u.Path) == ".css"
 		}))
@@ -87,7 +89,8 @@ func TestPageAlias(t *testing.T) {
 				body:     `page`,
 			},
 		}),
-		Output(tmp.Path("/public")))
+		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -129,7 +132,8 @@ func TestPageOverwriteExistingOutputs(t *testing.T) {
 				body:     string(testutil.GifBin),
 			},
 		}),
-		Output(tmp.Path("/public")))
+		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")))
 	c.Nil(err)
 	tmp.DumpTree()
 
@@ -169,7 +173,8 @@ func TestPageServeFileSymlinks(t *testing.T) {
 			&url.URL{Path: "/stuff"},
 			&url.URL{Path: "/stuff.txt"},
 			&url.URL{Path: "/stuff.css"}),
-		Output(tmp.Path("/public")))
+		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -226,7 +231,8 @@ func TestPageVariantBasic(t *testing.T) {
 	tmp := testutil.NewTmpDir(c, nil)
 	defer tmp.Remove()
 
-	site, err := Crawl(variantHandler, Output(tmp.Path("/public")))
+	site, err := Crawl(variantHandler, Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -254,6 +260,7 @@ func TestPageVariantFingerprint(t *testing.T) {
 	site, err := Crawl(
 		variantHandler,
 		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")),
 		Fingerprint(func(u *url.URL, mediaType string) bool {
 			return u.Path != "/"
 		}))
@@ -315,7 +322,8 @@ func TestPageURLFragments(t *testing.T) {
 				body:     `<div id="frag"></div>`,
 			},
 		}),
-		Output(tmp.Path("/public")))
+		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -346,7 +354,8 @@ func TestPageRedirectBasic(t *testing.T) {
 				body:     `file`,
 			},
 		}),
-		Output(tmp.Path("/public")))
+		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")))
 	c.Nil(err)
 	tmp.DumpTree()
 
@@ -388,7 +397,8 @@ func TestPageBodyChanged(t *testing.T) {
 			&url.URL{Path: "/"},
 			&url.URL{Path: "/page/1/"},
 			&url.URL{Path: "/page/2/"}),
-		Output(tmp.Path("/public")))
+		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path(".cache/fingerprints")))
 	c.Must.Nil(err)
 	tmp.DumpTree()
 
@@ -640,7 +650,9 @@ func TestPageErrors(t *testing.T) {
 
 			var opts []Option
 			opts = append(opts, test.opts...)
-			opts = append(opts, Output(tmp.Path("/public")))
+			opts = append(opts,
+				Output(tmp.Path("/public")),
+				FingerprintCache(tmp.Path(".cache/fingerprints")))
 
 			_, err := Crawl(test.h, opts...)
 			c.Equal(err, test.err)

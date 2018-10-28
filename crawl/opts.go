@@ -1,6 +1,8 @@
 package crawl
 
-import "net/url"
+import (
+	"net/url"
+)
 
 // An Option is passed to Crawl() to change default options
 type Option interface {
@@ -25,8 +27,9 @@ func Output(path string) Option {
 	})
 }
 
-// Transforms appends the given transforms to existing transform. Transforms are
-// looked up by media type (eg. "text/html", not "text/html; charset=utf-8").
+// Transforms appends the given transforms to any existing transforms.
+// Transforms are looked up by media type (eg. "text/html", not "text/html;
+// charset=utf-8").
 func Transforms(transforms map[string][]Transform) Option {
 	return option(func(cr *crawler) {
 		for mediaType, ts := range transforms {
@@ -35,10 +38,21 @@ func Transforms(transforms map[string][]Transform) Option {
 	})
 }
 
-// Fingerprint sets the fingerprint callback
+// Fingerprint sets the callback that determines if a resource should be
+// fingerprinted
 func Fingerprint(cb func(u *url.URL, mediaType string) bool) Option {
 	return option(func(cr *crawler) {
-		cr.fingerprint = cb
+		cr.fingerprints.cb = cb
+	})
+}
+
+// FingerprintCache sets the file where the fingerprint cache should be written.
+// Set to "" to disable caching.
+//
+// Note: The file is a gzip-compressed .json file. Name it as you will.
+func FingerprintCache(cacheFile string) Option {
+	return option(func(cr *crawler) {
+		cr.fingerprints.cacheFile = cacheFile
 	})
 }
 

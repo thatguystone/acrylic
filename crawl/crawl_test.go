@@ -50,14 +50,16 @@ func TestCrawlClean(t *testing.T) {
 
 	cr := newCrawler(nil,
 		Output(tmp.Path("/public")),
+		FingerprintCache(tmp.Path("/.cache/fingerprints")),
 		CleanDirs(
+			tmp.Path("/.cache"),
 			tmp.Path("/cache0"),
 			tmp.Path("/cache0/nested"),
 			tmp.Path("/cache1"),
 			tmp.Path("/does-not-exist")))
 	cr.setUsed(tmp.Path("/public/file"))
 	cr.setUsed(tmp.Path("/cache0/file"))
-	err := cr.clean()
+	err := cr.finish()
 	c.Nil(err)
 
 	c.Equal(tmp.GetFiles(), map[string]string{
@@ -133,7 +135,8 @@ func TestCrawlClaimCollision(t *testing.T) {
 				Output(tmp.Path("/public")),
 				Fingerprint(func(u *url.URL, mediaType string) bool {
 					return strings.Contains(u.Path, "img.gif")
-				}))
+				}),
+				FingerprintCache(tmp.Path("/.cache/fingerprints")))
 
 			for _, path := range test.paths {
 				cr.get(&url.URL{Path: path})
@@ -235,7 +238,8 @@ func TestCrawlClaimFileDirMismatch(t *testing.T) {
 						body:     `nested`,
 					},
 				}),
-				Output(tmp.Path("/public")))
+				Output(tmp.Path("/public")),
+				FingerprintCache(tmp.Path("/.cache/fingerprints")))
 
 			for _, path := range test.paths {
 				cr.get(&url.URL{Path: path})

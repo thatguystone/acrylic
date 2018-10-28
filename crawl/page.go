@@ -147,11 +147,12 @@ func (pg *Page) render(resp *response) error {
 	// Fingerprint after transforms so that any sub-resources with changed
 	// fingerprints change this resource's fingerprint.
 	if needsFingerprint {
-		err := pg.fingerprint(resp)
+		fp, err := pg.cr.fingerprints.get(resp)
 		if err != nil {
 			return err
 		}
 
+		pg.Fingerprint = fp
 		pg.setOutputPath()
 	}
 
@@ -177,7 +178,7 @@ func (pg *Page) render(resp *response) error {
 			return err
 		}
 
-		return os.Symlink(resp.body.symSrc, pg.OutputPath)
+		return os.Symlink(absPath(resp.body.symSrc), pg.OutputPath)
 	}
 
 	// If the file hasn't changed, don't write anything: this is mainly for
@@ -192,7 +193,7 @@ func (pg *Page) render(resp *response) error {
 		return err
 	}
 
-	return ioutil.WriteFile(pg.OutputPath, resp.body.b, 0640)
+	return ioutil.WriteFile(pg.OutputPath, resp.body.b, 0666)
 }
 
 func (pg *Page) setAliasOf(o *Page) {
@@ -243,18 +244,6 @@ func (pg *Page) applyTransforms(resp *response) error {
 
 	resp.body.set(b)
 	return nil
-}
-
-func (pg *Page) fingerprint(resp *response) error {
-	r, err := resp.body.reader()
-	if err != nil {
-		return err
-	}
-
-	defer r.Close()
-
-	pg.Fingerprint, err = fingerprint(r)
-	return err
 }
 
 // IsExternal checks if this content refers to an external URL
