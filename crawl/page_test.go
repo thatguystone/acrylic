@@ -400,9 +400,6 @@ func TestPageBodyChanged(t *testing.T) {
 func TestPageErrors(t *testing.T) {
 	c := check.New(t)
 
-	_, cssOpenErr := os.Open("/doesnt-exist.css")
-	_, gifOpenErr := os.Open("/doesnt-exist.gif")
-
 	tests := []struct {
 		name string
 		h    http.Handler
@@ -416,7 +413,7 @@ func TestPageErrors(t *testing.T) {
 				"/": {
 					ResponseError{
 						Status: http.StatusNotFound,
-						Body:   []byte(`404 page not found` + "\n"),
+						Body:   []byte(`404 page not found`),
 					},
 				},
 			},
@@ -504,7 +501,10 @@ func TestPageErrors(t *testing.T) {
 				Entry(&url.URL{Path: "/all.css"}),
 			},
 			err: SiteError{
-				"/all.css": {cssOpenErr},
+				"/all.css": {ResponseError{
+					Status: http.StatusNotFound,
+					Body:   []byte(`file "/doesnt-exist.css" does not exist`),
+				}},
 			},
 		},
 		{
@@ -522,7 +522,10 @@ func TestPageErrors(t *testing.T) {
 				}),
 			},
 			err: SiteError{
-				"/img.gif": {gifOpenErr},
+				"/img.gif": {ResponseError{
+					Status: http.StatusNotFound,
+					Body:   []byte(`file "/doesnt-exist.gif" does not exist`),
+				}},
 			},
 		},
 		{

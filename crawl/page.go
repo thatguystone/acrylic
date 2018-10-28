@@ -1,6 +1,7 @@
 package crawl
 
 import (
+	"bytes"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -110,7 +111,7 @@ func (pg *Page) handleResp(rr *httptest.ResponseRecorder) error {
 		body, _ := resp.body.get()
 		return ResponseError{
 			Status: resp.status,
-			Body:   body,
+			Body:   bytes.TrimSpace(body),
 		}
 	}
 }

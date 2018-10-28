@@ -3,6 +3,7 @@ package crawl
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"mime"
@@ -31,6 +32,19 @@ func ServeFile(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		http.Error(w,
+			fmt.Sprintf("file %q does not exist", path),
+			http.StatusNotFound)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	contType := mime.TypeByExtension(filepath.Ext(path))
 	if contType == "" {
 		contType = DefaultType
@@ -45,7 +59,8 @@ func ServeFile(w http.ResponseWriter, r *http.Request, path string) {
 
 // Variant sets the output name (and query string, if included) for the current
 // request. This is mainly useful for handlers that change their output based on
-// query string vals (eg. image scalers, css themes, etc).
+// query string vals (eg. image scalers, css themes, etc) since query strings
+// have no meaning for static sites.
 //
 // All links that point to original URL will be rewritten.
 func Variant(w http.ResponseWriter, name string) {
