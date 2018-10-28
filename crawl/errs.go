@@ -34,6 +34,8 @@ func (err SiteError) Error() string {
 			b.WriteString("\n")
 			b.WriteString(stringc.Indent(err.Error(), internal.Indent+internal.Indent))
 		}
+
+		fmt.Fprintln(&b)
 	}
 
 	return b.String()
