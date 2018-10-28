@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/thatguystone/acrylic/internal"
+	"golang.org/x/sync/errgroup"
 )
 
 // Crawl performs a crawl with the given config
@@ -195,22 +196,28 @@ func (cr *crawler) finish() error {
 		dirs = append(dirs, absPath(dir))
 	}
 
-	if cr.fingerprints.cacheEnabled() {
-		cr.setUsed(cr.fingerprints.cacheFile)
-	}
-
 	for _, dir := range dirs {
 		cr.setUsed(dir)
 	}
 
-	for _, dir := range dirs {
-		err := cr.cleanDir(dir)
-		if err != nil {
-			return err
-		}
+	if cr.fingerprints.cacheEnabled() {
+		cr.setUsed(cr.fingerprints.cacheFile)
 	}
 
-	return cr.fingerprints.saveCache(cr.used)
+	var g errgroup.Group
+
+	for _, dir := range dirs {
+		dir := dir
+		g.Go(func() error {
+			return cr.cleanDir(dir)
+		})
+	}
+
+	g.Go(func() error {
+		return cr.fingerprints.saveCache(cr.used)
+	})
+
+	return g.Wait()
 }
 
 func (cr *crawler) cleanDir(dir string) error {
