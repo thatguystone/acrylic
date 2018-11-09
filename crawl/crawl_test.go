@@ -43,6 +43,9 @@ func TestCrawlClean(t *testing.T) {
 		"/cache0/dir/dir/file": ``,
 		"/cache0/dir/file":     ``,
 		"/cache0/file":         ``,
+		"/cache0/file1":        ``,
+		"/cache0/file2":        ``,
+		"/cache0/file3":        ``,
 		"/cache0/nested/file":  ``,
 		"/cache1/file":         ``,
 	})

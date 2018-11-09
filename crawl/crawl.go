@@ -240,7 +240,12 @@ func (cr *crawler) cleanDir(dir string) error {
 			return err
 		}
 
-		// No need to continue: everything below this was removed
-		return filepath.SkipDir
+		if info.IsDir() {
+			// Since the dir was removed, have to skip it, or it causes a walk
+			// error
+			return filepath.SkipDir
+		}
+
+		return nil
 	})
 }
