@@ -61,6 +61,7 @@ func (isc *imgscale) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case nil:
 		crawl.Variant(w, cfs.DropExt(filepath.Base(srcPath))+nameSuffix)
+		internal.SetMustRevalidate(w)
 		crawl.ServeFile(w, r, cachePath)
 	}
 }
