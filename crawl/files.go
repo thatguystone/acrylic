@@ -72,6 +72,9 @@ func fileEquals(path string, b []byte) (equal bool, err error) {
 }
 
 func filePrepWrite(path string) error {
+	// FIXME(as): if a path like "/a/b" already exists, then trying to create
+	// file at "/a/b/c" will fail since b is a file, not a dir.
+
 	err := os.RemoveAll(path)
 	if err != nil {
 		return err
