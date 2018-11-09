@@ -43,9 +43,7 @@ func (c *ReadThrough) GetPath(
 	key := calcKey(keys)
 
 	cachePath := filepath.Join(c.root, key[:2], key)
-	if ext != "" {
-		cachePath = cfs.ChangeExt(cachePath, ext)
-	}
+	cachePath = cfs.ChangeExt(cachePath, ext)
 
 	cacheInfo, err := os.Stat(cachePath)
 	if err != nil && !os.IsNotExist(err) {
@@ -55,7 +53,7 @@ func (c *ReadThrough) GetPath(
 	// Cache's ModTime is always synced with src's, so if unchanged, then cache
 	// is still good
 	if cacheInfo == nil || !srcInfo.ModTime().Equal(cacheInfo.ModTime()) {
-		err := c.populate(cachePath, srcInfo.ModTime(), create)
+		err := c.populate(cachePath, ext, srcInfo.ModTime(), create)
 		if err != nil {
 			return "", err
 		}
@@ -65,7 +63,7 @@ func (c *ReadThrough) GetPath(
 }
 
 func (c *ReadThrough) populate(
-	dstPath string, srcMod time.Time, create Create) (err error) {
+	dstPath, ext string, srcMod time.Time, create Create) (err error) {
 
 	err = os.MkdirAll(filepath.Dir(dstPath), 0777)
 	if err != nil {
@@ -77,7 +75,7 @@ func (c *ReadThrough) populate(
 	// cache file with the temp file (on Linux, at least, this is atomic).
 	tmpF, err := ioutil.TempFile(
 		filepath.Dir(dstPath),
-		"acrylic-*"+filepath.Ext(dstPath))
+		cfs.ChangeExt("acrylic-*", ext))
 	if err != nil {
 		return
 	}
