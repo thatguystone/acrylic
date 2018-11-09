@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/thatguystone/acrylic/internal"
+	"github.com/thatguystone/acrylic/internal/cache"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -61,7 +61,7 @@ func newCrawler(h http.Handler, opts ...Option) *crawler {
 		output:     "./public",
 		transforms: make(map[string][]Transform),
 		fingerprints: fingerprints{
-			cacheFile: filepath.Join(internal.DefaultCacheDir, "fingerprints.json.gz"),
+			cacheFile: filepath.Join(cache.DefaultDir, "fingerprints.json.gz"),
 		},
 		err: make(SiteError),
 		site: Site{

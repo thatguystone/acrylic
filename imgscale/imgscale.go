@@ -24,7 +24,7 @@ type imgscale struct {
 func New(opts ...Option) http.Handler {
 	isc := &imgscale{
 		root:  ".",
-		cache: ".cache",
+		cache: cache.NewReadThrough(filepath.Join(cache.DefaultDir, "imgs")),
 		sema:  make(chan struct{}, runtime.NumCPU()),
 	}
 
