@@ -1,6 +1,10 @@
 package imgscale
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/thatguystone/acrylic/internal/cache"
+)
 
 // An Option is passed to New() to change default options
 type Option interface {
@@ -21,7 +25,7 @@ func Root(path string) Option {
 // Cache sets the path to the image cache
 func Cache(path string) Option {
 	return option(func(isc *imgscale) {
-		isc.cache = path
+		isc.cache = cache.NewReadThrough(path)
 	})
 }
 
