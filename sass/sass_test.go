@@ -67,11 +67,16 @@ func TestSassChange(t *testing.T) {
 	c.Equal(rr.Code, http.StatusOK)
 
 	tmp.WriteFile("all.scss", `.some {color: #000;}`)
-	c.Until(time.Second, func() bool {
+	c.Until(500, func() bool {
 		rr := hit(sass)
 		c.Equal(rr.Code, http.StatusOK)
 
-		return strings.Contains(rr.Body.String(), ".some {")
+		if !strings.Contains(rr.Body.String(), ".some {") {
+			time.Sleep(2 * time.Millisecond)
+			return false
+		}
+
+		return true
 	})
 }
 
