@@ -1,5 +1,7 @@
 module github.com/thatguystone/acrylic
 
+go 1.12
+
 require (
 	github.com/goji/param v0.0.0-20160927210335-d7f49fd7d1ed
 	github.com/rjeczalik/notify v0.9.2
